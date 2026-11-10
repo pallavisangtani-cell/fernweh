@@ -1,0 +1,646 @@
+<title>Fernweh</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: quiet sidebar of countries and cities, one wide reading column, hairline structure, serif only for names and figures. */
+:root{
+--bg:#f5f6fa;--surface:#ffffff;--ink:#0e1630;--ink2:#3b4663;--mute:#6b7692;--line:#e4e8f1;--line2:#d3d9e8;
+--brand:#2b46c9;--brand-ink:#ffffff;--brand-soft:#edf0fd;--violet:#6a4fd6;
+--ok:#0e7a53;--warn:#a05a00;--bad:#c13a1c;
+--display:"Fraunces",Georgia,serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#0a1126;--surface:#111a33;--ink:#eaeeff;--ink2:#bcc6e4;--mute:#8c98ba;--line:#1d2848;--line2:#2a3860;
+--brand:#8fa6ff;--brand-ink:#0a1126;--brand-soft:#16224a;--violet:#a994ff;--ok:#4fd69c;--warn:#f0b445;--bad:#ff8f72;color-scheme:dark}}
+:root[data-theme="dark"]{
+--bg:#0a1126;--surface:#111a33;--ink:#eaeeff;--ink2:#bcc6e4;--mute:#8c98ba;--line:#1d2848;--line2:#2a3860;
+--brand:#8fa6ff;--brand-ink:#0a1126;--brand-soft:#16224a;--violet:#a994ff;--ok:#4fd69c;--warn:#f0b445;--bad:#ff8f72;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.55 var(--body);-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+.app{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:100vh}
+aside{background:var(--surface);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;padding-block:26px 20px;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:16px;gap:6px}
+.word{font:600 1.55rem/1 var(--display);letter-spacing:-.01em;display:flex;align-items:center;gap:6px}
+.word i{width:7px;height:7px;border-radius:50%;background:var(--violet);margin-top:8px}
+.tag{color:var(--mute);font-size:.78rem;margin:4px 0 18px}
+.nav{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-weight:500;cursor:pointer}
+.nav:hover{border-color:var(--line2)}
+.nav.ai{background:var(--brand-soft);border-color:transparent;color:var(--brand)}
+.nav small{color:var(--mute);font-weight:400}
+.cap{font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);font-weight:600;margin:20px 0 4px}
+.country{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-weight:600}
+.country span small{color:var(--mute);font-weight:400;margin-left:6px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--line2);margin-right:9px}
+.dot.v{background:var(--ok)}
+.city{display:flex;justify-content:space-between;width:100%;text-align:left;padding:6px 10px;border:0;border-radius:8px;background:none;color:var(--ink2);font:inherit;cursor:pointer}
+.city small{color:var(--mute);font-size:.72rem}
+.city:hover{background:var(--bg)}
+.city.on{background:var(--brand-soft);color:var(--brand);font-weight:600}
+.addrow{display:flex;gap:6px;margin:4px 0}
+.link2{border:0;background:none;color:var(--brand);font:inherit;font-size:.82rem;font-weight:500;padding:4px 0;cursor:pointer;text-align:left}
+main{padding-block:38px 80px;padding-left:48px;padding-right:max(32px,env(safe-area-inset-right,0px));min-width:0;max-width:1080px}
+h2{font:500 2.15rem/1.12 var(--display);letter-spacing:-.015em}
+h3{font-size:.95rem;font-weight:600}
+.crumb{font-size:.78rem;color:var(--mute);margin-bottom:6px}
+.lede{color:var(--mute);max-width:62ch;margin-top:6px}
+.titlebar{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.titlebar .row1{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:9px;padding:8px 11px;min-width:0}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+textarea{width:100%;resize:vertical;min-height:190px;line-height:1.5}
+button{font:inherit;cursor:pointer}
+.btn{padding:8px 15px;border-radius:9px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font-weight:500}
+.btn:hover{border-color:var(--ink2)}
+.btn.pri{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.55;cursor:wait}
+.x{border:0;background:none;color:var(--mute);padding:2px 7px;font-size:1.1rem;line-height:1}
+.x:hover{color:var(--bad)}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-top:22px;overflow:hidden}
+.cell{padding:14px 18px;border-left:1px solid var(--line);min-width:0}
+.cell:first-child{border-left:0}
+.cell label,.cell .l{display:block;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:3px}
+.cell .v{font:500 1.35rem/1.2 var(--display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.cell .inl{display:flex;align-items:baseline;gap:6px}
+.cell .inl span{color:var(--mute);font-size:.85rem}
+.cell input{border:0;background:none;padding:0;font:500 1.35rem/1.2 var(--display);width:100%;border-bottom:1px dashed var(--line2);border-radius:0}
+.cell select{border:0;background:none;padding:2px 0;font:500 1.1rem var(--display);width:100%}
+.meter{height:5px;background:var(--line);border-radius:99px;margin-top:12px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--brand);border-radius:99px}
+.meter.over i{background:var(--bad)}
+.note{font-size:.84rem;margin-top:8px;color:var(--mute)}
+.note.warn{color:var(--warn)}
+.tabs{display:flex;gap:22px;overflow-x:auto;border-bottom:1px solid var(--line);margin:26px 0 24px}
+.tab{border:0;border-bottom:2px solid transparent;background:none;color:var(--mute);padding:8px 0 11px;white-space:nowrap;font-weight:500;margin-bottom:-1px}
+.tab:hover{color:var(--ink)}
+.tab.on{color:var(--ink);border-color:var(--brand)}
+.grid{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px}
+.card .k{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.card .big{font:500 2rem/1.15 var(--display);margin-top:4px;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:12px 0}
+.fld{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--mute);font-weight:500}
+.fld.g{flex:1;min-width:150px}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.b{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:600;padding:2px 10px;border-radius:99px;border:0;line-height:1.6;color:var(--mute);background:var(--bg)}
+.b::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.b.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent)}
+.b.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.b.via{color:var(--brand);background:var(--brand-soft)}
+.b.via::before{display:none}
+.meta{color:var(--mute);font-size:.82rem}
+.money{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid var(--line);font-size:.82rem;color:var(--mute)}
+.money input{width:92px;padding:3px 8px;font-size:.82rem}
+.money strong{color:var(--ink);font-variant-numeric:tabular-nums}
+.head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.cardhead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.cardhead b{overflow-wrap:anywhere;font-weight:600}
+.daycard{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-bottom:14px;overflow:hidden}
+.dayhead{display:flex;justify-content:space-between;padding:11px 18px;border-bottom:1px solid var(--line);font:500 1.05rem var(--display)}
+.dayhead span:last-child{font:500 .8rem var(--body);color:var(--mute);font-variant-numeric:tabular-nums}
+.act{padding:14px 18px;border-top:1px solid var(--line)}
+.act:first-of-type{border-top:0}
+.catrow{margin:12px 0}
+.catrow div:first-child{display:flex;justify-content:space-between;font-size:.85rem}
+.catrow .meter{margin-top:6px}
+.empty{color:var(--mute);padding:14px 0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;margin-top:18px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.chip{border:1px solid var(--line2);background:var(--surface);color:var(--ink2);border-radius:99px;padding:4px 13px;font-size:.8rem;font-weight:500}
+.chip:hover{border-color:var(--ink2)}
+.chip.on{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.link{border:0;background:none;color:var(--brand);padding:0;font-weight:500;text-align:left}
+.pk{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--surface);border:1px solid var(--line);border-radius:10px;margin:6px 0}
+.pk span{flex:1}
+.pk.done span{text-decoration:line-through;color:var(--mute)}
+.pcat{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--violet);font-weight:600}
+.err{color:var(--bad);font-weight:500;margin-top:10px}
+.check{display:flex;gap:9px;align-items:flex-start;margin:12px 0;color:var(--ink2)}
+.check input{margin-top:3px}
+.divider{border-top:1px solid var(--line);margin:18px 0}
+#toast{display:none;position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:500;font-size:.85rem;z-index:50;max-width:90vw}
+@media (max-width:820px){
+.app{grid-template-columns:minmax(0,1fr)}
+aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:26px}
+h2{font-size:1.8rem}
+.cell{border-left:0;border-top:1px solid var(--line)}
+.cell:first-child{border-top:0}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<div class="app">
+<aside>
+  <div class="word">Fernweh<i></i></div>
+  <div class="tag">Your travel journal</div>
+  <button class="nav ai" data-act="brain"><span>AI Brain Box<br><small>Paste plans, bookings, past trips</small></span><span aria-hidden="true">&rarr;</span></button>
+  <button class="nav" data-act="world"><span>Passport</span><small id="passport">0 countries</small></button>
+  <div class="cap">Destinations</div>
+  <div class="addrow"><input id="newCountry" placeholder="Add a country" aria-label="New country" style="flex:1"><button class="btn" data-act="addCountry">Add</button></div>
+  <button class="link2" data-act="world">Add a country you have already visited</button>
+  <div id="tree"></div>
+  <div style="margin-top:auto;padding-top:18px"><button class="btn" data-act="backup" style="width:100%">Backup and restore</button></div>
+</aside>
+<main id="main"></main>
+</div>
+<div id="toast" role="status"></div>
+<script>
+var KEY="travel-journal-v1",S={countries:[]},sel={city:null,tab:"over",view:"city",form:false,confirmDel:null,pcat:"All",pf:"all",shareText:""};
+var brain={text:"",busy:false,err:"",res:null,done:false,status:""},shareOpt={itin:true,costs:false,cat:"All"};
+var CUR="USD",packBusy=false;
+try{var raw=localStorage.getItem(KEY);if(raw)S=JSON.parse(raw)}catch(e){}
+if(!S.countries)S.countries=[];
+var LISTS=["itin","trans","stays","places","budget","packing"],KS=["itin","trans","stays","places","budget"];
+var PCATS=["Food & drink","Hotel","Vineyard","Sights","Activity","Shopping","Other"];
+function fix(){S.countries.forEach(function(c){if(!c.status)c.status="planned";if(c.year==null)c.year="";if(c.note==null)c.note="";c.cities.forEach(function(ci){LISTS.forEach(function(k){if(!ci[k])ci[k]=[]});if(!ci.cur)ci.cur="USD";if(ci.notes==null)ci.notes="";if(ci.tbudget==null)ci.tbudget="";if(!ci.status)ci.status="planning"})})}
+fix();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function uid(){return Math.random().toString(36).slice(2,9)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function $(id){return document.getElementById(id)}
+function arr(v){return Array.isArray(v)?v:[]}
+function findCity(id){for(var i=0;i<S.countries.length;i++){var cs=S.countries[i].cities;for(var j=0;j<cs.length;j++)if(cs[j].id===id)return{c:S.countries[i],city:cs[j]}}return null}
+function newCity(n,cur,status){return{id:uid(),name:n,cur:cur||"USD",tbudget:"",status:status||"planning",itin:[],trans:[],stays:[],places:[],budget:[],packing:[],notes:""}}
+function planned(it){var v=(it.cost!==undefined&&it.cost!=="")?it.cost:it.amount;return parseFloat(v)||0}
+function spentOf(it){return parseFloat(it.spent)||0}
+function fmt(n){return CUR+" "+(+n||0).toLocaleString(undefined,{maximumFractionDigits:2})}
+var toastT;function toast(m){var t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toastT);toastT=setTimeout(function(){t.style.display="none"},3800)}
+async function cap(n){try{return window.claude&&window.claude.use?await window.claude.use(n):null}catch(e){return null}}
+async function saveFile(name,data){
+  var d=await cap("downloads");
+  if(!d){toast("Saving files is not available in this view. Use Copy as text instead.");return}
+  try{var r=await d.save({filename:name,data:data});toast(r.status==="saved"?"Saved "+name:"Sent "+name)}
+  catch(e){if(e&&e.code!=="declined")toast("Could not save the file ("+((e&&e.code)||"error")+").")}
+}
+function slug(s){return String(s||"trip").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"trip"}
+function mapsUrl(name,city){return "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(name+", "+city)}
+
+var STAT=[{k:"status",ph:"Status",type:"select",w:120,opts:[["tentative","Tentative"],["confirmed","Confirmed"]]},{k:"booked",ph:"Booking",type:"select",w:120,opts:[["no","Not booked"],["yes","Booked"]]}];
+var MONEY=[{k:"cost",ph:"Planned cost",type:"number",w:110},{k:"spent",ph:"Spent so far",type:"number",w:110}];
+var TABS={
+ over:{label:"Overview"},
+ itin:{label:"Itinerary",req:"text",add:"Add activity",fields:[{k:"day",ph:"Day",type:"number",w:70},{k:"time",ph:"Time",type:"time",w:110},{k:"text",ph:"Activity",grow:1},{k:"via",ph:"Provider or venue",w:160}].concat(MONEY,STAT)},
+ trans:{label:"Flights & transport",req:"route",add:"Add transport",fields:[{k:"mode",ph:"Mode",type:"select",w:100,opts:["Flight","Train","Bus","Ferry","Car","Taxi","Other"].map(function(x){return[x,x]})},{k:"no",ph:"Flight / train no.",w:130},{k:"route",ph:"Route (e.g. DXB to LIS)",grow:1},{k:"via",ph:"Carrier (e.g. Emirates)",w:170},{k:"date",ph:"Date",type:"date"},{k:"time",ph:"Time",type:"time",w:110},{k:"ref",ph:"Booking ref",w:120}].concat(MONEY,STAT)},
+ stays:{label:"Stays",req:"name",add:"Add stay",fields:[{k:"name",ph:"Hotel",grow:1},{k:"via",ph:"Booked via",w:160},{k:"checkin",ph:"Check-in",type:"date"},{k:"checkout",ph:"Check-out",type:"date"},{k:"conf",ph:"Confirmation no.",w:140}].concat(MONEY,STAT)},
+ places:{label:"Places",req:"name",add:"Add place",fields:[{k:"name",ph:"Place name",grow:1},{k:"cat",ph:"Category",type:"select",w:140,opts:PCATS.map(function(x){return[x,x]})},{k:"note",ph:"Note",grow:1},{k:"link",ph:"Google Maps link (optional)",grow:1}]},
+ budget:{label:"Other costs",req:"label",add:"Add cost",fields:[{k:"label",ph:"Item",grow:1},{k:"cat",ph:"Category",w:130},{k:"cost",ph:"Planned",type:"number",w:110},{k:"spent",ph:"Spent",type:"number",w:110}]},
+ packing:{label:"Packing",req:"text",add:"Add item",fields:[{k:"text",ph:"Item to pack",grow:1}]},
+ notes:{label:"Notes"}
+};
+var CATS=[["itin","Activities"],["trans","Transport"],["stays","Stays"],["budget","Other costs"]];
+var BOOKABLE=["itin","trans","stays"];
+var CURS=["AED","USD","EUR","GBP","JPY","CHF","SGD"];
+var STARTER=["Passport","Phone charger","Power adapter","Medication","Toiletries","Comfortable shoes","Travel insurance details","Reusable water bottle"];
+var SAMPLES=[["Flight","Emirates EK055 DXB to DUS on 1 Dec, booked, ref HG8P22, 1800 AED. Landing in Düsseldorf, coffee and a look at the Rhine Tower."],["Hotel","Hotel Aloft Frankfurt via Booking.com, 2 to 6 Dec, tentative, 540 EUR, not paid yet."],["Bank SMS","Purchase of EUR 45.50 at Starbucks Düsseldorf Hbf"],["Past trip","Lisbon, Portugal, March 2024. Flew Emirates EK191 DXB to LIS, 2,400 AED. Stayed at Hotel Avenida 12 to 16 March, 540 EUR. Lunch at Time Out Market, pastéis at Manteigaria, day trip to Sintra."]];
+var XLSX_SRC="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",MAMMOTH_SRC="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js";
+
+function title(k,it){return k==="itin"?it.text:k==="trans"?(it.no?it.no+" · ":"")+it.route:k==="stays"?it.name:k==="budget"?it.label:it.name||it.text}
+
+function renderTree(){
+  var h="",v=0;
+  S.countries.forEach(function(co){
+    if(co.status==="visited")v++;
+    h+='<div class="country"><span><i class="dot'+(co.status==="visited"?' v':'')+'"></i>'+esc(co.name)+(co.year?'<small>'+esc(co.year)+'</small>':'')+'</span>'+(sel.confirmDel===co.id?'<span><button class="b warn" data-act="delYes" data-id="'+co.id+'">Remove</button> <button class="x" data-act="delNo" style="font-size:.8rem">Cancel</button></span>':'<button class="x" data-act="delCountry" data-id="'+co.id+'" aria-label="Remove '+esc(co.name)+'">×</button>')+'</div>';
+    co.cities.forEach(function(ci){h+='<button class="city'+(ci.id===sel.city&&sel.view==="city"?' on':'')+'" data-act="pick" data-id="'+ci.id+'"><span>'+esc(ci.name)+'</span>'+(ci.status==="completed"?'<small>Done</small>':'')+'</button>'});
+    h+='<div class="addrow"><input data-cityin="'+co.id+'" placeholder="Add a city" aria-label="New city in '+esc(co.name)+'" style="flex:1"><button class="btn" data-act="addCity" data-id="'+co.id+'">Add</button></div>';
+  });
+  $("tree").innerHTML=h;$("passport").textContent=v+(v===1?" country":" countries");
+}
+
+function fieldHtml(f){
+  var st=f.grow?"":"width:"+(f.w||140)+"px",inp;
+  if(f.type==="select")inp='<select data-f="'+f.k+'" aria-label="'+esc(f.ph)+'" style="'+st+'">'+f.opts.map(function(o){return'<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>'}).join("")+'</select>';
+  else inp='<input data-f="'+f.k+'" type="'+(f.type||"text")+'" aria-label="'+esc(f.ph)+'" style="'+st+'">';
+  return '<label class="fld'+(f.grow?' g':'')+'">'+esc(f.ph)+inp+'</label>';
+}
+function badges(k,it){
+  var c=it.status==="confirmed",b=it.booked==="yes",a=' data-list="'+k+'" data-id="'+it.id+'" title="Click to change"';
+  return '<div class="badges"><button class="b '+(c?'ok':'warn')+'" data-act="flip" data-k="status"'+a+'>'+(c?'Confirmed':'Tentative')+'</button><button class="b '+(b?'ok':'')+'" data-act="flip" data-k="booked"'+a+'>'+(b?'Booked':'Not booked')+'</button>'+(it.via?'<span class="b via">via '+esc(it.via)+'</span>':'')+'</div>';
+}
+function moneyHtml(k,it){
+  var p=planned(it);
+  return '<div class="money"><span>'+(p?'Planned <strong>'+fmt(p)+'</strong>':'No cost set')+'</span><label>Spent <input type="number" data-spent="'+it.id+'" data-list="'+k+'" value="'+esc(it.spent||"")+'" placeholder="0" aria-label="Amount spent"></label></div>';
+}
+function cardHtml(k,it,city){
+  var del='<button class="x" data-act="del" data-list="'+k+'" data-id="'+it.id+'" aria-label="Delete">×</button>',meta="";
+  if(k==="itin")meta=it.time||"";
+  else if(k==="trans")meta=[it.mode,it.date,it.time,it.ref?"Ref "+it.ref:""].filter(Boolean).join(" · ");
+  else if(k==="stays")meta=[(it.checkin||it.checkout)?(it.checkin||"?")+" to "+(it.checkout||"?"):"",it.conf?"Conf. "+it.conf:""].filter(Boolean).join(" · ");
+  else if(k==="budget")meta=it.cat||"";
+  else if(k==="places"){var u=/^https?:/i.test(it.link||"")?it.link:mapsUrl(it.name,city.name);return '<div class="card"><div class="cardhead"><div><div class="pcat">'+esc(it.cat||"Other")+'</div><b>'+esc(it.name)+'</b></div>'+del+'</div>'+(it.note?'<div class="meta" style="margin-top:4px">'+esc(it.note)+'</div>':'')+'<div style="margin-top:10px"><a class="link" href="'+esc(u)+'" target="_blank" rel="noopener">Open in Maps</a></div></div>'}
+  return '<div class="'+(k==="itin"?'act':'card')+'"><div class="cardhead"><div><b>'+esc(title(k,it))+'</b>'+(meta?'<div class="meta">'+esc(meta)+'</div>':'')+'</div>'+del+'</div>'+(BOOKABLE.indexOf(k)>=0?badges(k,it):'')+moneyHtml(k,it)+'</div>';
+}
+
+function totals(city){
+  var T={all:{p:0,s:0}};
+  CATS.forEach(function(x){var p=0,s=0;city[x[0]].forEach(function(it){p+=planned(it);s+=spentOf(it)});T[x[0]]={label:x[1],p:p,s:s};T.all.p+=p;T.all.s+=s});
+  return T;
+}
+function overHtml(city,T){
+  var n={c:0,t:0,b:0,u:0,all:0},need=[],car={};
+  BOOKABLE.forEach(function(k){city[k].forEach(function(it){
+    n.all++;if(it.status==="confirmed")n.c++;else n.t++;
+    if(it.booked==="yes")n.b++;else{n.u++;need.push({k:k,it:it})}
+    if(k==="trans"&&it.via)car[it.via]=1;
+  })});
+  var pct=n.all?Math.round(n.b/n.all*100):0,carriers=Object.keys(car);
+  var h='<div class="grid g4"><div class="card"><div class="k"><span>Booked</span><span>'+pct+'%</span></div><div class="big">'+n.b+'<span class="meta" style="font:400 .9rem var(--body)"> of '+n.all+'</span></div><div class="meter"><i style="width:'+pct+'%"></i></div></div>';
+  h+='<div class="card"><div class="k"><span>Confirmation</span></div><div style="display:flex;gap:26px"><div><div class="big" style="color:var(--ok)">'+n.c+'</div><div class="meta">Confirmed</div></div><div><div class="big" style="color:var(--warn)">'+n.t+'</div><div class="meta">Tentative</div></div></div></div>';
+  h+='<div class="card"><div class="k"><span>Carriers</span></div><div style="font-weight:600;margin-top:10px">'+(carriers.length?esc(carriers.join(", ")):'None added yet')+'</div><div class="meta">From your transport</div></div>';
+  h+='<div class="card"><div class="k"><span>Still to book</span></div><div class="big" style="color:'+(n.u?'var(--bad)':'var(--ok)')+'">'+n.u+'</div><div class="meta">items not booked yet</div></div></div>';
+  h+='<div class="grid g2" style="margin-top:14px"><div class="card"><h3>Cost by category</h3>';
+  CATS.forEach(function(x){var t=T[x[0]],p=t.p?Math.min(100,t.s/t.p*100):0;h+='<div class="catrow"><div><span>'+t.label+'</span><span style="font-variant-numeric:tabular-nums">'+fmt(t.s)+' of '+fmt(t.p)+'</span></div><div class="meter'+(t.s>t.p&&t.p?' over':'')+'"><i style="width:'+p+'%"></i></div></div>'});
+  h+='</div><div class="card"><h3>Still to book or confirm</h3>';
+  if(!need.length)h+='<p class="empty">Nothing waiting. Everything is booked.</p>';
+  need.slice(0,10).forEach(function(x){var it=x.it;h+='<div style="padding:11px 0;border-top:1px solid var(--line);margin-top:10px"><b>'+esc(title(x.k,it))+'</b><div class="meta">'+TABS[x.k].label+'</div>'+badges(x.k,it)+'</div>'});
+  return h+'</div></div>';
+}
+
+function sortKey(k,a,b){
+  if(k==="itin")return (parseFloat(a.day)||0)-(parseFloat(b.day)||0)||String(a.time).localeCompare(b.time);
+  if(k==="trans")return String(a.date).localeCompare(b.date)||String(a.time).localeCompare(b.time);
+  if(k==="stays")return String(a.checkin).localeCompare(String(b.checkin));
+  return 0;
+}
+function curSelect(city){
+  var l=CURS.indexOf(city.cur)<0?CURS.concat([city.cur]):CURS;
+  return '<select data-cur="1" id="cursel" aria-label="Currency">'+l.map(function(c){return'<option'+(c===city.cur?' selected':'')+'>'+c+'</option>'}).join("")+'</select>';
+}
+function catCounts(list){var m={};list.forEach(function(x){var c=x.cat||"Other";m[c]=(m[c]||0)+1});return m}
+function tabHtml(city,T){
+  var k=sel.tab,Tb=TABS[k],h="";
+  if(k==="over")return overHtml(city,T);
+  if(k==="notes")return '<textarea id="notes" aria-label="Notes" style="min-height:320px" placeholder="Neighbourhoods, tips, transport, food to try, things to avoid…">'+esc(city.notes)+'</textarea>';
+  h+='<div class="head"><h3>'+Tb.label+'</h3><div class="acts">';
+  if(k==="places")h+='<button class="btn" data-act="importPick">Import Maps CSV</button><input type="file" id="csv" accept=".csv,text/csv" hidden>';
+  if(k==="packing")h+='<button class="btn" data-act="suggestPack"'+(packBusy?' disabled':'')+'>'+(packBusy?'Thinking…':'Suggest for this trip')+'</button>'+(city.packing.length?'':'<button class="btn" data-act="starter">Starter list</button>');
+  h+='<button class="btn pri" data-act="toggleForm">'+(sel.form?'Close':'Add '+Tb.add.replace(/^Add /,''))+'</button></div></div>';
+  if(sel.form)h+='<div class="card" style="margin-bottom:14px"><div class="row" id="form" style="margin:0">'+Tb.fields.map(fieldHtml).join("")+'<button class="btn pri" data-act="add">Save</button></div></div>';
+  var list=city[k].slice().sort(function(a,b){return sortKey(k,a,b)});
+  if(k==="places"&&list.length){
+    var cc=catCounts(list),names=Object.keys(cc);
+    h+='<div class="chips"><button class="chip'+(sel.pcat==="All"?' on':'')+'" data-act="pcat" data-id="All">All '+list.length+'</button>'+names.map(function(c){return'<button class="chip'+(sel.pcat===c?' on':'')+'" data-act="pcat" data-id="'+esc(c)+'">'+esc(c)+' '+cc[c]+'</button>'}).join("")+'</div>';
+    if(sel.pcat!=="All")list=list.filter(function(x){return (x.cat||"Other")===sel.pcat});
+  }
+  if(!list.length)return h+'<p class="empty">Nothing here yet.</p>';
+  if(k==="itin"){
+    var days={};list.forEach(function(it){var d=it.day||"?";(days[d]=days[d]||[]).push(it)});
+    Object.keys(days).forEach(function(d){var p=0,s=0;days[d].forEach(function(it){p+=planned(it);s+=spentOf(it)});h+='<div class="daycard"><div class="dayhead"><span>Day '+esc(d)+'</span><span>'+fmt(s)+' of '+fmt(p)+'</span></div>'+days[d].map(function(it){return cardHtml("itin",it,city)}).join("")+'</div>'});
+  }else if(k==="packing"){
+    list.forEach(function(it){h+='<div class="pk'+(it.done?' done':'')+'"><input type="checkbox" data-act="tick" data-id="'+it.id+'"'+(it.done?' checked':'')+' aria-label="Packed"><span>'+esc(it.text)+'</span><button class="x" data-act="del" data-list="packing" data-id="'+it.id+'" aria-label="Delete">×</button></div>'});
+    h+='<p class="meta" style="margin-top:8px">'+list.filter(function(x){return x.done}).length+' of '+list.length+' packed</p>';
+  }else h+='<div class="grid g2">'+list.map(function(it){return cardHtml(k,it,city)}).join("")+'</div>';
+  return h;
+}
+function renderMain(){
+  var m=$("main"),f=sel.city&&findCity(sel.city);
+  if(sel.view==="brain"){m.innerHTML=brainHtml();return}
+  if(sel.view==="backup"){m.innerHTML=backupHtml();return}
+  if(sel.view==="world"||!f){m.innerHTML=worldHtml();return}
+  var city=f.city;CUR=city.cur||"USD";
+  if(sel.view==="share"){m.innerHTML=shareView(f);return}
+  var T=totals(city),bud=parseFloat(city.tbudget)||0,base=bud||T.all.p,left=base-T.all.s,pct=base?Math.min(100,T.all.s/base*100):0,done=city.status==="completed";
+  var h='<div class="crumb">'+esc(f.c.name)+'</div><div class="titlebar"><div class="row1"><h2>'+esc(city.name)+'</h2><span class="b '+(done?'ok':'via')+'">'+(done?'Completed':'Planning')+'</span></div><div class="acts"><button class="btn" data-act="toggleDone">'+(done?'Reopen trip':'Mark as completed')+'</button><button class="btn pri" data-act="share">Share trip</button></div></div>';
+  h+='<div class="strip"><div class="cell"><label for="tb">Trip budget</label><div class="inl"><span>'+esc(CUR)+'</span><input id="tb" data-tb="1" type="number" min="0" placeholder="Set budget" value="'+esc(city.tbudget)+'"></div></div><div class="cell"><div class="l">Planned</div><div class="v">'+esc(fmt(T.all.p))+'</div></div><div class="cell"><div class="l">Spent</div><div class="v">'+esc(fmt(T.all.s))+'</div></div><div class="cell"><div class="l">'+(left<0?'Over by':(bud?'Left of budget':'Left of plan'))+'</div><div class="v" style="color:'+(left<0?'var(--bad)':'var(--ink)')+'">'+esc(fmt(Math.abs(left)))+'</div></div><div class="cell"><label for="cursel">Currency</label>'+curSelect(city)+'</div></div>';
+  h+='<div class="meter'+(left<0?' over':'')+'" role="img" aria-label="'+Math.round(pct)+'% of '+(bud?'trip budget':'planned costs')+' spent"><i style="width:'+pct+'%"></i></div>';
+  if(!bud)h+='<p class="note">Set a trip budget above to track spending against it. Until then, spending is compared with your planned costs.</p>';
+  else if(T.all.p>bud)h+='<p class="note warn">Planned costs are '+esc(fmt(T.all.p-bud))+' over your trip budget.</p>';
+  h+='<div class="tabs" role="tablist">';
+  Object.keys(TABS).forEach(function(k){h+='<button class="tab'+(k===sel.tab?' on':'')+'" role="tab" data-act="tab" data-id="'+k+'">'+TABS[k].label+'</button>'});
+  m.innerHTML=h+'</div>'+tabHtml(city,T);
+}
+
+/* ---------- Passport ---------- */
+function worldHtml(){
+  var vis=S.countries.filter(function(c){return c.status==="visited"}).length,pl=S.countries.length-vis;
+  var h='<div class="crumb">Passport</div><h2>Where you have been</h2><p class="lede">Add countries you have already visited without planning anything, or mark a planned country as visited once you return.</p>';
+  h+='<div class="panel"><h3>Add a country you have visited</h3><div class="row"><label class="fld g">Country<input id="pc-name" placeholder="e.g. Japan"></label><label class="fld" style="width:110px">Year<input id="pc-year" placeholder="e.g. 2019" inputmode="numeric"></label><label class="fld g">Cities (optional, comma separated)<input id="pc-cities" placeholder="Tokyo, Kyoto"></label><label class="fld g">Note (optional)<input id="pc-note" placeholder="Cherry blossom season"></label><button class="btn pri" data-act="addPast">Add to passport</button></div></div>';
+  if(!S.countries.length)return h+'<p class="empty">No countries yet.</p>';
+  h+='<div class="head" style="margin-top:26px"><h3>'+vis+' visited · '+pl+' planned</h3><div class="chips" style="margin:0">'+[["all","All"],["visited","Visited"],["planned","Planned"]].map(function(c){return'<button class="chip'+(sel.pf===c[0]?' on':'')+'" data-act="pf" data-id="'+c[0]+'">'+c[1]+'</button>'}).join("")+'</div></div>';
+  var list=S.countries.filter(function(c){return sel.pf==="all"||c.status===sel.pf}).slice().sort(function(a,b){
+    if(a.status!==b.status)return a.status==="visited"?-1:1;
+    return (parseInt(b.year)||0)-(parseInt(a.year)||0)||a.name.localeCompare(b.name)});
+  if(!list.length)h+='<p class="empty">Nothing in this view.</p>';
+  h+='<div class="grid g2">';
+  list.forEach(function(co){
+    var v=co.status==="visited",items=0;co.cities.forEach(function(ci){BOOKABLE.forEach(function(k){items+=ci[k].length})});
+    h+='<div class="card"><div class="cardhead"><h3 style="font:500 1.3rem var(--display)">'+esc(co.name)+'</h3><button class="b '+(v?'ok':'via')+'" data-act="cstatus" data-id="'+co.id+'" title="Click to change">'+(v?'Visited':'Planned')+'</button></div><div class="meta" style="margin-top:2px">'+co.cities.length+(co.cities.length===1?' city':' cities')+' · '+items+' bookings</div><div class="row" style="margin:12px 0 4px"><label class="fld" style="width:90px">Year<input data-cyear="'+co.id+'" value="'+esc(co.year)+'" inputmode="numeric"></label><label class="fld g">Note<input data-cnote="'+co.id+'" value="'+esc(co.note)+'"></label></div><div class="chips">'+co.cities.map(function(ci){return'<button class="chip" data-act="pick" data-id="'+ci.id+'">'+esc(ci.name)+'</button>'}).join("")+'</div></div>';
+  });
+  return h+'</div>';
+}
+function addPast(){
+  var name=$("pc-name").value.trim();if(!name){toast("Enter a country name first.");return}
+  var year=$("pc-year").value.trim(),cs=$("pc-cities").value.split(",").map(function(x){return x.trim()}).filter(Boolean),note=$("pc-note").value.trim();
+  var co=S.countries.filter(function(c){return c.name.toLowerCase()===name.toLowerCase()})[0];
+  if(!co){co={id:uid(),name:name,status:"visited",year:year,note:note,cities:[]};S.countries.push(co)}
+  else{co.status="visited";if(year)co.year=year;if(note)co.note=note}
+  cs.forEach(function(n){if(!co.cities.some(function(c){return c.name.toLowerCase()===n.toLowerCase()})){co.cities.push(newCity(n,"USD","completed"))}});
+  save();renderTree();renderMain();toast(name+" added to your passport.");
+}
+
+/* ---------- Backup ---------- */
+function backupHtml(){
+  return '<div class="crumb">Data</div><h2>Backup and restore</h2><p class="lede">Your journal is saved in this browser. Download a copy, or paste a saved copy below and restore it.</p><div class="panel"><textarea id="bk" aria-label="Backup data">'+esc(JSON.stringify(S))+'</textarea><div class="row"><button class="btn pri" data-act="restore">Restore from text</button><button class="btn" data-act="dlBackup">Download backup file</button><button class="btn" data-act="closeView">Close</button></div></div>';
+}
+
+/* ---------- Share ---------- */
+function shareItems(city){
+  var out=[],seen={};
+  city.places.forEach(function(p){var k=p.name.toLowerCase();if(seen[k])return;seen[k]=1;out.push({name:p.name,cat:p.cat||"Other",note:p.note||"",url:/^https?:/i.test(p.link||"")?p.link:mapsUrl(p.name,city.name)})});
+  city.stays.forEach(function(s){var k=s.name.toLowerCase();if(seen[k])return;seen[k]=1;out.push({name:s.name,cat:"Hotel",note:(s.checkin||s.checkout)?(s.checkin||"?")+" to "+(s.checkout||"?"):"",url:mapsUrl(s.name,city.name)})});
+  return out;
+}
+function catsOf(items){var c=[];PCATS.forEach(function(x){if(items.some(function(i){return i.cat===x}))c.push(x)});items.forEach(function(i){if(c.indexOf(i.cat)<0)c.push(i.cat)});return c}
+function shareView(f){
+  var city=f.city,items=shareItems(city),cats=catsOf(items),done=city.status==="completed";
+  var h='<div class="crumb">'+esc(f.c.name)+' / '+esc(city.name)+'</div><div class="titlebar"><div><h2>Share this trip</h2><p class="lede">Download a single page with your places, filterable by type, each with a Google Maps link. Booking references and costs are left out unless you include costs below.</p></div><div class="acts"><button class="btn" data-act="closeView">Back to trip</button></div></div>';
+  h+='<div class="panel"><div class="head" style="margin:0"><div><h3>'+esc(city.name)+', '+esc(f.c.name)+'</h3><div class="meta">'+(done?'Completed trip':'Trip in planning')+' · '+items.length+' places and stays</div></div></div>';
+  h+='<label class="check"><input type="checkbox" data-act="shopt" data-k="itin"'+(shareOpt.itin?' checked':'')+'><span>Include the day-by-day itinerary</span></label><label class="check" style="margin-top:0"><input type="checkbox" data-act="shopt" data-k="costs"'+(shareOpt.costs?' checked':'')+'><span>Include budget and costs</span></label>';
+  h+='<div class="divider"></div>';
+  if(!items.length)h+='<p class="empty">Add places on the Places tab, or paste details into the Brain Box, to build the list.</p>';
+  else{
+    h+='<div class="chips"><button class="chip'+(shareOpt.cat==="All"?' on':'')+'" data-act="shcat" data-id="All">All '+items.length+'</button>'+cats.map(function(c){return'<button class="chip'+(shareOpt.cat===c?' on':'')+'" data-act="shcat" data-id="'+esc(c)+'">'+esc(c)+' '+items.filter(function(i){return i.cat===c}).length+'</button>'}).join("")+'</div>';
+    h+='<div class="grid g2">'+items.filter(function(i){return shareOpt.cat==="All"||i.cat===shareOpt.cat}).map(function(i){return'<div class="card"><div class="pcat">'+esc(i.cat)+'</div><b>'+esc(i.name)+'</b>'+(i.note?'<div class="meta">'+esc(i.note)+'</div>':'')+'<div style="margin-top:8px"><a class="link" href="'+esc(i.url)+'" target="_blank" rel="noopener">Open in Maps</a></div></div>'}).join("")+'</div>';
+  }
+  h+='<div class="row" style="margin-top:22px"><button class="btn pri" data-act="dlShare">Download shareable page</button><button class="btn" data-act="copyShare">Copy as text</button><button class="btn" data-act="dlCsv">Download sheet (CSV)</button></div>';
+  if(sel.shareText)h+='<p class="meta">Select and copy this text:</p><textarea id="shtxt" readonly style="min-height:160px">'+esc(sel.shareText)+'</textarea>';
+  return h+'</div>';
+}
+function shareFilter(){
+  var chips=document.querySelectorAll(".chip"),pls=document.querySelectorAll(".pl");
+  chips.forEach(function(b){b.onclick=function(){var c=b.getAttribute("data-c");chips.forEach(function(x){x.classList.toggle("on",x===b)});pls.forEach(function(p){p.hidden=!(c==="All"||p.getAttribute("data-c")===c)})}});
+}
+var SHARE_CSS='*{box-sizing:border-box}body{margin:0;background:#f6f7fb;color:#0e1630;font:15px/1.55 Inter,system-ui,sans-serif}main{max-width:760px;margin:0 auto;padding:40px 20px 64px}h1{font:600 2.3rem/1.1 Georgia,serif;margin:4px 0 6px}h2{font:600 1.15rem Georgia,serif;margin:34px 0 10px}.k{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:#6b7692;font-weight:600}.m{color:#6b7692;font-size:.88rem}.chips{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0}.chip{border:1px solid #d3d9e8;background:#fff;color:#3b4663;border-radius:99px;padding:5px 14px;font:inherit;font-size:.82rem;cursor:pointer}.chip.on{background:#2b46c9;color:#fff;border-color:#2b46c9}.pl{background:#fff;border:1px solid #e4e8f1;border-radius:12px;padding:14px 16px;margin:8px 0}.pl[hidden]{display:none}.pl b{display:block}.tag{font-size:.72rem;color:#2b46c9;font-weight:600;text-transform:uppercase;letter-spacing:.06em}.day{background:#fff;border:1px solid #e4e8f1;border-radius:12px;padding:6px 16px 10px;margin:8px 0}.day h3{font-size:.78rem;letter-spacing:.07em;text-transform:uppercase;color:#2b46c9;margin:10px 0 4px}.act{padding:8px 0;border-top:1px solid #e4e8f1}a{color:#2b46c9}@media(prefers-color-scheme:dark){body{background:#0a1126;color:#eaeeff}.pl,.day{background:#111a33;border-color:#1d2848}.act{border-color:#1d2848}.m,.k{color:#8c98ba}.chip{background:#111a33;color:#bcc6e4;border-color:#2a3860}.chip.on{background:#8fa6ff;color:#0a1126;border-color:#8fa6ff}a,.tag,.day h3{color:#8fa6ff}}';
+function buildShareDoc(f){
+  var city=f.city,T=totals(city),items=shareItems(city),cats=catsOf(items),done=city.status==="completed";CUR=city.cur||"USD";
+  var h='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(city.name)+' trip guide</title><style>'+SHARE_CSS+'</style></head><body><main>';
+  h+='<div class="k">'+esc(f.c.name)+' · '+(done?'Completed trip':'Trip in planning')+'</div><h1>'+esc(city.name)+'</h1>';
+  if(shareOpt.costs){var bud=parseFloat(city.tbudget)||0;h+='<p class="m">'+(bud?'Trip budget '+esc(fmt(bud))+' · ':'')+'Planned '+esc(fmt(T.all.p))+' · Spent '+esc(fmt(T.all.s))+'</p>'}
+  if(items.length){
+    h+='<div class="chips"><button class="chip on" data-c="All">All ('+items.length+')</button>'+cats.map(function(c){return'<button class="chip" data-c="'+esc(c)+'">'+esc(c)+' ('+items.filter(function(x){return x.cat===c}).length+')</button>'}).join("")+'</div>';
+    h+=items.map(function(x){return'<div class="pl" data-c="'+esc(x.cat)+'"><span class="tag">'+esc(x.cat)+'</span><b>'+esc(x.name)+'</b>'+(x.note?'<div class="m">'+esc(x.note)+'</div>':'')+'<a href="'+esc(x.url)+'" target="_blank" rel="noopener">Open in Maps</a></div>'}).join("");
+  }
+  if(shareOpt.itin&&city.itin.length){
+    h+='<h2>Itinerary</h2>';var days={};
+    city.itin.slice().sort(function(a,b){return sortKey("itin",a,b)}).forEach(function(it){var d=it.day||"?";(days[d]=days[d]||[]).push(it)});
+    Object.keys(days).forEach(function(d){h+='<div class="day"><h3>Day '+esc(d)+'</h3>'+days[d].map(function(it){return'<div class="act">'+(it.time?'<span class="m">'+esc(it.time)+'</span> ':'')+esc(it.text)+(it.via?' <span class="m">· '+esc(it.via)+'</span>':'')+(shareOpt.costs&&planned(it)?' <span class="m">· '+esc(fmt(planned(it)))+'</span>':'')+'</div>'}).join("")+'</div>'});
+  }
+  h+='<p class="m" style="margin-top:40px">Shared from Fernweh</p></main><script>('+shareFilter.toString()+')()<\/script></body></html>';
+  return h;
+}
+function shareText(f){
+  var city=f.city,items=shareItems(city),cats=catsOf(items),t=city.name+", "+f.c.name+" ("+(city.status==="completed"?"completed trip":"trip in planning")+")\n";
+  cats.forEach(function(c){t+="\n"+c+"\n";items.filter(function(i){return i.cat===c}).forEach(function(i){t+="- "+i.name+(i.note?" ("+i.note+")":"")+" "+i.url+"\n"})});
+  if(shareOpt.itin&&city.itin.length){t+="\nItinerary\n";var days={};city.itin.slice().sort(function(a,b){return sortKey("itin",a,b)}).forEach(function(it){var d=it.day||"?";(days[d]=days[d]||[]).push(it)});Object.keys(days).forEach(function(d){t+="Day "+d+"\n";days[d].forEach(function(it){t+="- "+(it.time?it.time+" ":"")+it.text+"\n"})})}
+  return t;
+}
+function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+function buildCsv(f){
+  var c=f.city,rows=[["Type","Name","Detail","Day or date","Time","Provider","Planned cost","Spent","Status","Booked","Reference"]];
+  c.itin.forEach(function(i){rows.push(["Activity",i.text,"","Day "+(i.day||""),i.time,i.via,i.cost,i.spent,i.status,i.booked,""])});
+  c.trans.forEach(function(i){rows.push(["Transport",(i.no?i.no+" ":"")+i.route,i.mode,i.date,i.time,i.via,i.cost,i.spent,i.status,i.booked,i.ref])});
+  c.stays.forEach(function(i){rows.push(["Stay",i.name,"",(i.checkin||"")+" to "+(i.checkout||""),"",i.via,i.cost,i.spent,i.status,i.booked,i.conf])});
+  c.places.forEach(function(i){rows.push(["Place",i.name,(i.cat||"Other")+(i.note?" - "+i.note:""),"","","","","","","",""])});
+  c.budget.forEach(function(i){rows.push(["Cost",i.label,i.cat,"","","",i.cost,i.spent,"","",""])});
+  return rows.map(function(r){return r.map(csvCell).join(",")}).join("\n");
+}
+
+/* ---------- Brain box ---------- */
+function brainHtml(){
+  var h='<div class="crumb">AI</div><h2>Brain Box</h2><p class="lede">Paste plans, a booking email, a bank SMS or notes from an old trip, or upload a past itinerary or spreadsheet. It sorts everything into the right country, city and tab, and reads status, booking and provider from your text.</p><div class="chips">'+SAMPLES.map(function(s,i){return'<button class="chip" data-act="sample" data-id="'+i+'">Try: '+s[0]+'</button>'}).join("")+'</div><div class="panel" style="margin-top:8px"><textarea id="brainIn" aria-label="Plans or bookings" placeholder="e.g. Lisbon, Portugal 12–16 March. Emirates EK191 DXB to LIS, booked, 2,400. Hotel Avenida via Booking.com, conf. 88213, 540, paid. Day 2: Sintra day trip, not booked yet.">'+esc(brain.text)+'</textarea>';
+  h+='<div class="row"><button class="btn" data-act="pickFile">Upload a file</button><input type="file" id="brainFile" accept=".csv,.tsv,.txt,.md,.json,.xlsx,.xls,.docx" hidden><span class="meta">Excel, Word, CSV or text. PDFs: paste the text instead.</span></div>';
+  h+='<label class="check"><input type="checkbox" data-act="bdone"'+(brain.done?' checked':'')+'><span>These are past trips. Mark them as completed, as booked and as spent, and add the countries to my passport.</span></label>';
+  h+='<div class="row" style="margin-bottom:0"><button class="btn pri" data-act="organise"'+(brain.busy?' disabled':'')+'>'+(brain.busy?(brain.status||'Organising…'):'Organise it')+'</button><button class="btn" data-act="closeView">Cancel</button></div>';
+  if(brain.err)h+='<p class="err">'+esc(brain.err)+'</p>';
+  var r=brain.res;
+  if(r){
+    var L=[['itin','activities'],['trans','transport'],['stays','stays'],['places','places'],['budget','costs'],['packing','packing items']];
+    h+='<div class="divider"></div><h3>Ready to add to '+esc(citiesOf(r))+'</h3><p class="meta">'+L.map(function(p){return r[p[0]].length+' '+p[1]}).join(' · ')+(r.notes?' · notes':'')+'</p>';
+    ['trans','stays','itin','budget'].forEach(function(k){r[k].slice(0,8).forEach(function(it){h+='<div class="card" style="margin:10px 0"><b>'+esc(title(k,it))+'</b><div class="meta">'+esc(it.city)+', '+esc(it.country)+'</div>'+(BOOKABLE.indexOf(k)>=0?'<div class="badges"><span class="b '+(it.status==='confirmed'?'ok':'warn')+'">'+(it.status==='confirmed'?'Confirmed':'Tentative')+'</span><span class="b '+(it.booked==='yes'?'ok':'')+'">'+(it.booked==='yes'?'Booked':'Not booked')+'</span>'+(it.via?'<span class="b via">via '+esc(it.via)+'</span>':'')+'</div>':'<div class="meta">'+esc(it.cat||'')+(it.spent?' · spent '+esc(it.spent):'')+'</div>')+'</div>'})});
+    h+='<div class="row"><button class="btn pri" data-act="applyBrain">Add to journal</button><button class="btn" data-act="discardBrain">Discard</button></div>';
+  }
+  return h+'</div>';
+}
+function citiesOf(r){var m={};KS.forEach(function(k){r[k].forEach(function(x){m[x.city]=1})});if(r.packing.length||r.notes)m[r.city]=1;return Object.keys(m).join(', ')}
+function norm(o,keys){
+  var x={};keys.forEach(function(k){x[k]=o&&o[k]!=null?String(o[k]).trim():''});
+  if(keys.indexOf('status')>=0){x.status=x.status.toLowerCase()==='confirmed'?'confirmed':'tentative';x.booked=x.booked.toLowerCase()==='yes'?'yes':'no'}
+  return x;
+}
+function aiError(e){return e&&e.code==='not_granted'?'Permission for the AI helper was declined.':e&&e.code==='rate_limited'?'Too many requests. Wait a moment and try again.':((e&&e.message)||'Something went wrong. Try again.')}
+function buildPrompt(text,cur,done){
+  return 'You organise travel notes into JSON. Return ONLY one JSON object, no markdown, with these keys: country (string), city (string), currency (3-letter code for the money in the text, or empty), '
+  +'itin (array of activities: {city, country, day: number, time: 24h HH:MM or empty, text, via: provider or venue, cost: number as string, spent: number as string, status, booked}), '
+  +'trans (array: {city, country, mode: Flight|Train|Bus|Ferry|Car|Taxi|Other, no: flight or train number such as EK055, route, via: carrier such as Emirates, date: YYYY-MM-DD, time, ref: booking reference or PNR code, cost, spent, status, booked}), '
+  +'stays (array: {city, country, name, via: booking platform or hotel, checkin: YYYY-MM-DD, checkout: YYYY-MM-DD, conf, cost, spent, status, booked}), '
+  +'places (array of {city, country, name, cat, note, link}), budget (array of other costs: {city, country, label, cat, cost, spent}), packing (array of {text}), notes (string of general guide tips). '
+  +'cat for places is exactly one of: Food & drink, Hotel, Vineyard, Sights, Activity, Shopping, Other. '
+  +'Also add every named restaurant, cafe, bar, winery, hotel, attraction or shop in the text to places with the right cat, even when it is also in itin or stays. '
+  +'status is "confirmed" if the text says confirmed, reserved or ticketed, otherwise "tentative". booked is "yes" if the text says booked, paid or ticketed, otherwise "no". Set spent only if the text says it was paid. '
+  +'If the text is a bank or card SMS alert, add exactly one budget item with label = merchant, cat = Spending, cost and spent = the amount. '
+  +'Use empty strings or empty arrays when something is not in the text. Never invent details. '
+  +(done?'The text records trips that already happened. If a date has no year in the text, leave the date empty rather than guessing a year. ':'If dates have no year assume '+new Date().getFullYear()+'. ')
+  +'Number activity days from 1 in order within each trip. The text may cover several cities or trips. Give EVERY item in itin, trans, stays, places and budget its own "city" and "country". An item belongs to the city where it happens: a hotel or activity to its own city; a flight or train to its destination city, EXCEPT the final leg that ends at the traveller home (the origin of the first flight), which belongs to the city it departs from. Example: DXB to DUS belongs to Dusseldorf, DUS to FRA belongs to Frankfurt, FRA to DXB (going home) belongs to Frankfurt. Copy flight numbers and booking reference codes exactly as written in the text and never drop them. '
+  +'Current city in the journal: '+(cur?cur.city.name+', '+cur.c.name:'none')+'. If the text names no city, use the current one.\n\nTEXT:\n'+text;
+}
+function normRes(r,cur){
+  var B=['status','booked'],C=['city','country'];
+  var res={
+    country:String(r.country||(cur&&cur.c.name)||'').trim(),city:String(r.city||(cur&&cur.city.name)||'').trim(),currency:String(r.currency||'').trim().toUpperCase().slice(0,4),
+    itin:arr(r.itin).map(function(o){return norm(o,['day','time','text','via','cost','spent'].concat(C,B))}),
+    trans:arr(r.trans).map(function(o){return norm(o,['mode','no','route','via','date','time','ref','cost','spent'].concat(C,B))}),
+    stays:arr(r.stays).map(function(o){return norm(o,['name','via','checkin','checkout','conf','cost','spent'].concat(C,B))}),
+    places:arr(r.places).map(function(o){return norm(o,['name','cat','note','link'].concat(C))}),
+    budget:arr(r.budget).map(function(o){return norm(o,['label','cat','cost','spent'].concat(C))}),
+    packing:arr(r.packing).map(function(o){return norm(o,['text'])}),
+    notes:String(r.notes||'').trim()
+  };
+  res.places.forEach(function(p){if(PCATS.indexOf(p.cat)<0)p.cat='Other'});
+  KS.forEach(function(k){res[k].forEach(function(x){x.city=x.city||res.city;x.country=x.country||res.country})});
+  if(!res.city){var first=[].concat(res.itin,res.trans,res.stays,res.places,res.budget).filter(function(x){return x.city&&x.country})[0];if(first){res.city=first.city;res.country=first.country}}
+  return res;
+}
+function mergeRes(a,b){
+  KS.concat(['packing']).forEach(function(k){a[k]=a[k].concat(b[k])});
+  if(b.notes)a.notes=(a.notes?a.notes+'\n\n':'')+b.notes;
+  if(!a.city){a.city=b.city;a.country=b.country}
+  if(!a.currency)a.currency=b.currency;
+  return a;
+}
+function chunkText(t,n){
+  var out=[],cur='';
+  t.split('\n').forEach(function(line){if(cur.length+line.length+1>n&&cur){out.push(cur);cur=''}cur+=line+'\n'});
+  if(cur.trim())out.push(cur);
+  return out;
+}
+async function runBrain(){
+  var text=brain.text.trim();if(!text||brain.busy)return;
+  brain.busy=true;brain.err='';brain.res=null;brain.status='';renderMain();
+  try{
+    var sample=await cap('sample');
+    if(!sample)throw new Error('The AI helper is not available here. Use the forms in each city instead.');
+    var cur=sel.city&&findCity(sel.city),chunks=chunkText(text,12000),capped=chunks.length>6,merged=null;
+    if(capped)chunks=chunks.slice(0,6);
+    for(var i=0;i<chunks.length;i++){
+      brain.status=chunks.length>1?'Reading part '+(i+1)+' of '+chunks.length+'…':'';renderMain();
+      var r=await sample.json(buildPrompt(chunks[i],cur,brain.done));
+      var res=normRes(r,cur);
+      merged=merged?mergeRes(merged,res):res;
+    }
+    var all=[].concat(merged.itin,merged.trans,merged.stays,merged.places,merged.budget);
+    if(all.some(function(x){return !x.city||!x.country})||((merged.packing.length||merged.notes)&&(!merged.city||!merged.country)))throw new Error('I could not tell which city and country this is. Add them to your text, for example "Lisbon, Portugal".');
+    if(brain.done){
+      ['itin','trans','stays'].forEach(function(k){merged[k].forEach(function(x){x.status='confirmed';x.booked='yes';if(!x.spent)x.spent=x.cost})});
+      merged.budget.forEach(function(x){if(!x.spent)x.spent=x.cost});
+    }
+    if(capped)toast('That file is long. I read the first part only.');
+    brain.res=merged;
+  }catch(e){brain.err=aiError(e)}
+  brain.busy=false;brain.status='';renderMain();
+}
+function yearOfItem(it){var m=String(it.date||it.checkin||'').match(/\b(?:19|20)\d\d\b/);return m?m[0]:''}
+function applyBrain(){
+  var r=brain.res;if(!r)return;var done=brain.done,first=null,years={};
+  function dest(cn,cy){
+    var co=S.countries.filter(function(c){return c.name.toLowerCase()===cn.toLowerCase()})[0];
+    if(!co){co={id:uid(),name:cn,status:done?"visited":"planned",year:"",note:"",cities:[]};S.countries.push(co)}
+    var c2=co.cities.filter(function(c){return c.name.toLowerCase()===cy.toLowerCase()})[0];
+    if(!c2){c2=newCity(cy,r.currency,done?"completed":"planning");co.cities.push(c2)}
+    if(done){c2.status="completed";co.status="visited"}
+    return{co:co,ci:c2};
+  }
+  KS.forEach(function(k){r[k].forEach(function(x){
+    var t=dest(x.country,x.city);if(!first)first=t.ci;
+    var y=yearOfItem(x);if(y&&(!years[t.co.id]||y<years[t.co.id]))years[t.co.id]=y;
+    var o={};Object.keys(x).forEach(function(q){if(q!=='city'&&q!=='country')o[q]=x[q]});o.id=uid();t.ci[k].push(o);
+  })});
+  var main=(r.packing.length||r.notes||!first)?dest(r.country,r.city).ci:first;
+  r.packing.forEach(function(x){x.id=uid();main.packing.push(x)});
+  if(r.notes)main.notes=(main.notes?main.notes+'\n\n':'')+r.notes;
+  S.countries.forEach(function(co){if(years[co.id]&&!co.year)co.year=years[co.id]});
+  brain.text='';brain.res=null;sel.city=main.id;sel.tab='over';sel.view='city';sel.form=false;
+  save();renderTree();renderMain();toast(done?'Past trip added to your journal and passport.':'Added to your journal.');
+}
+function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error('Could not load the file reader. Paste the text instead.'))};document.head.appendChild(s)})}
+async function readUpload(file){
+  var ext=(file.name.split('.').pop()||'').toLowerCase();
+  if(['csv','tsv','txt','md','json'].indexOf(ext)>=0)return await file.text();
+  if(ext==='xlsx'||ext==='xls'){
+    if(!window.XLSX)await loadScript(XLSX_SRC);
+    var wb=window.XLSX.read(await file.arrayBuffer(),{type:'array'});
+    return wb.SheetNames.map(function(n){return '## Sheet: '+n+'\n'+window.XLSX.utils.sheet_to_csv(wb.Sheets[n])}).join('\n\n');
+  }
+  if(ext==='docx'){
+    if(!window.mammoth)await loadScript(MAMMOTH_SRC);
+    var r=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return r.value;
+  }
+  throw new Error('That file type is not supported. Use Excel, Word, CSV or text, or paste the text.');
+}
+async function suggestPack(){
+  var f=sel.city&&findCity(sel.city);if(!f||packBusy)return;
+  packBusy=true;renderMain();
+  try{
+    var sample=await cap('sample');
+    if(!sample)throw new Error('The AI helper is not available here.');
+    var d=f.city.stays.map(function(s){return s.checkin}).filter(Boolean).sort()[0]||'';
+    var have=f.city.packing.map(function(x){return x.text}).join(', ');
+    var r=await sample.json('Suggest 12 practical items to pack for a trip to '+f.city.name+', '+f.c.name+(d?' around '+d:'')+'. Items already on the list: '+(have||'none')+'. Return ONLY a JSON array of short strings.');
+    arr(r).slice(0,15).forEach(function(t){f.city.packing.push({id:uid(),text:String(t).trim()})});
+    save();
+  }catch(e){toast(aiError(e))}
+  packBusy=false;renderMain();
+}
+
+/* ---------- Maps CSV ---------- */
+function parseCSV(t){
+  var rows=[],r=[],c="",q=false;
+  for(var i=0;i<t.length;i++){var ch=t[i];
+    if(q){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}
+    else if(ch==='"')q=true;
+    else if(ch===','){r.push(c);c=""}
+    else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&t[i+1]==='\n')i++;r.push(c);rows.push(r);r=[];c=""}
+    else c+=ch;
+  }
+  if(c||r.length){r.push(c);rows.push(r)}
+  return rows;
+}
+function importCSV(text){
+  var f=findCity(sel.city);if(!f)return;
+  var rows=parseCSV(text);if(rows.length<2)return;
+  var head=rows[0].map(function(x){return x.trim().toLowerCase()});
+  var ti=head.indexOf("title"),ni=head.indexOf("note"),ci=head.indexOf("comment"),ui=head.indexOf("url");
+  if(ti<0)ti=0;
+  rows.slice(1).forEach(function(r){var name=(r[ti]||"").trim();if(!name)return;
+    f.city.places.push({id:uid(),name:name,cat:"Other",note:((ni>=0&&r[ni])||(ci>=0&&r[ci])||"").trim(),link:ui>=0?(r[ui]||"").trim():""})});
+  save();renderMain();toast("Places imported. Set a type on each one so they filter when you share.");
+}
+
+/* ---------- Events ---------- */
+document.addEventListener("click",function(e){
+  var b=e.target.closest("[data-act]");if(!b)return;
+  var a=b.dataset.act,id=b.dataset.id,L=b.dataset.list,f=sel.city&&findCity(sel.city);
+  if(a==="addCountry"){var i=$("newCountry"),v=i.value.trim();if(!v)return;S.countries.push({id:uid(),name:v,status:"planned",year:"",note:"",cities:[]});i.value="";save();renderTree()}
+  else if(a==="delCountry"){sel.confirmDel=id;renderTree();toast("Remove this country and all its cities? Click Remove to confirm.")}
+  else if(a==="delNo"){sel.confirmDel=null;renderTree()}
+  else if(a==="delYes"){sel.confirmDel=null;S.countries=S.countries.filter(function(c){return c.id!==id});if(sel.city&&!findCity(sel.city))sel.city=null;save();renderTree();renderMain()}
+  else if(a==="addCity"){var inp=document.querySelector('[data-cityin="'+id+'"]'),v=inp.value.trim();if(!v)return;var co=S.countries.filter(function(c){return c.id===id})[0],nc=newCity(v);co.cities.push(nc);sel.city=nc.id;sel.tab="over";sel.view="city";sel.form=false;save();renderTree();renderMain()}
+  else if(a==="pick"){sel.city=id;sel.view="city";sel.form=false;sel.pcat="All";renderTree();renderMain()}
+  else if(a==="tab"){sel.tab=id;sel.form=false;renderMain()}
+  else if(a==="toggleForm"){sel.form=!sel.form;renderMain()}
+  else if(a==="add"&&f){var o={id:uid()};document.querySelectorAll("#form [data-f]").forEach(function(x){o[x.dataset.f]=x.value.trim()});if(!o[TABS[sel.tab].req])return;f.city[sel.tab].push(o);sel.form=false;save();renderTree();renderMain()}
+  else if(a==="del"&&f){f.city[L]=f.city[L].filter(function(x){return x.id!==id});save();renderMain()}
+  else if(a==="flip"&&f){f.city[L].forEach(function(x){if(x.id!==id)return;if(b.dataset.k==="status")x.status=x.status==="confirmed"?"tentative":"confirmed";else x.booked=x.booked==="yes"?"no":"yes"});save();renderMain()}
+  else if(a==="tick"&&f){f.city.packing.forEach(function(x){if(x.id===id)x.done=b.checked});save();renderMain()}
+  else if(a==="starter"&&f){STARTER.forEach(function(t){f.city.packing.push({id:uid(),text:t})});save();renderMain()}
+  else if(a==="suggestPack"){suggestPack()}
+  else if(a==="importPick"){$("csv").click()}
+  else if(a==="pcat"){sel.pcat=id;renderMain()}
+  else if(a==="toggleDone"&&f){var d=f.city.status==="completed";f.city.status=d?"planning":"completed";if(!d)f.c.status="visited";save();renderTree();renderMain();toast(d?"Trip reopened.":"Trip marked as completed. "+f.c.name+" is in your passport.")}
+  else if(a==="share"&&f){sel.view="share";sel.shareText="";shareOpt.cat="All";renderMain()}
+  else if(a==="shopt"){shareOpt[b.dataset.k]=b.checked}
+  else if(a==="shcat"){shareOpt.cat=id;renderMain()}
+  else if(a==="dlShare"&&f){CUR=f.city.cur||"USD";saveFile(slug(f.city.name)+"-trip-guide.html",buildShareDoc(f))}
+  else if(a==="dlCsv"&&f){saveFile(slug(f.city.name)+"-trip.csv",buildCsv(f))}
+  else if(a==="copyShare"&&f){var t=shareText(f);try{navigator.clipboard.writeText(t).then(function(){toast("Copied to clipboard.")},function(){sel.shareText=t;renderMain()})}catch(x){sel.shareText=t;renderMain()}}
+  else if(a==="cstatus"){S.countries.forEach(function(c){if(c.id===id)c.status=c.status==="visited"?"planned":"visited"});save();renderTree();renderMain()}
+  else if(a==="pf"){sel.pf=id;renderMain()}
+  else if(a==="addPast"){addPast()}
+  else if(a==="world"){sel.view="world";renderTree();renderMain()}
+  else if(a==="backup"){sel.view="backup";renderMain()}
+  else if(a==="dlBackup"){saveFile("fernweh-backup.json",JSON.stringify(S,null,2))}
+  else if(a==="brain"){sel.view="brain";renderMain()}
+  else if(a==="closeView"){sel.view="city";sel.shareText="";renderTree();renderMain()}
+  else if(a==="sample"){brain.text=SAMPLES[+id][1];renderMain()}
+  else if(a==="bdone"){brain.done=b.checked}
+  else if(a==="pickFile"){$("brainFile").click()}
+  else if(a==="organise"){runBrain()}
+  else if(a==="applyBrain"){applyBrain()}
+  else if(a==="discardBrain"){brain.res=null;renderMain()}
+  else if(a==="restore"){try{var d2=JSON.parse($("bk").value);if(!d2||!Array.isArray(d2.countries))throw 0;S=d2;fix();sel.city=null;sel.view="city";save();renderTree();renderMain()}catch(x){toast("That text is not a valid backup.")}}
+});
+document.addEventListener("change",function(e){
+  var t=e.target,f=sel.city&&findCity(sel.city);
+  if(t.id==="csv"&&t.files[0]){var r=new FileReader();r.onload=function(){importCSV(String(r.result))};r.readAsText(t.files[0])}
+  else if(t.id==="brainFile"&&t.files[0]){
+    var file=t.files[0];t.value="";
+    readUpload(file).then(function(txt){brain.text=(brain.text?brain.text+"\n\n":"")+"## File: "+file.name+"\n"+txt;brain.err="";renderMain();toast("Loaded "+file.name+" ("+txt.length.toLocaleString()+" characters).")}).catch(function(err){brain.err=(err&&err.message)||"Could not read that file.";renderMain()});
+  }
+  else if(t.dataset&&t.dataset.spent&&f){f.city[t.dataset.list].forEach(function(x){if(x.id===t.dataset.spent)x.spent=t.value});save();renderMain()}
+  else if(t.dataset&&t.dataset.cur&&f){f.city.cur=t.value;save();renderMain()}
+  else if(t.dataset&&t.dataset.tb&&f){f.city.tbudget=t.value;save();renderMain()}
+  else if(t.dataset&&t.dataset.cyear){S.countries.forEach(function(c){if(c.id===t.dataset.cyear)c.year=t.value.trim()});save();renderTree()}
+  else if(t.dataset&&t.dataset.cnote){S.countries.forEach(function(c){if(c.id===t.dataset.cnote)c.note=t.value.trim()});save()}
+});
+document.addEventListener("input",function(e){
+  if(e.target.id==="brainIn"){brain.text=e.target.value;return}
+  if(e.target.id==="notes"){var f=findCity(sel.city);if(f){f.city.notes=e.target.value;save()}}
+});
+document.addEventListener("keydown",function(e){
+  if(e.key!=="Enter")return;var t=e.target;
+  if(t.id==="newCountry")document.querySelector('[data-act="addCountry"]').click();
+  else if(t.dataset&&t.dataset.cityin)t.nextElementSibling.click();
+  else if(t.dataset&&t.dataset.f)document.querySelector('[data-act="add"]').click();
+});
+renderTree();renderMain();
+</script>

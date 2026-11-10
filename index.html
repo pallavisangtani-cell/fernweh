@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fernweh</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+<div class="app">
+<aside>
+  <div class="word">Fernweh<i></i></div>
+  <div class="tag">Your travel journal</div>
+  <button class="nav ai" data-act="brain"><span>AI Brain Box<br><small>Paste plans, bookings, past trips</small></span><span aria-hidden="true">&rarr;</span></button>
+  <button class="nav" data-act="world"><span>Passport</span><small id="passport">0 countries</small></button>
+  <div class="cap">Destinations</div>
+  <div class="addrow"><input id="newCountry" placeholder="Add a country" aria-label="New country" style="flex:1"><button class="btn" data-act="addCountry">Add</button></div>
+  <button class="link2" data-act="world">Add a country you have already visited</button>
+  <div id="tree"></div>
+  <div style="margin-top:auto;padding-top:18px"><button class="btn" data-act="backup" style="width:100%">Backup and restore</button></div>
+</aside>
+<main id="main"></main>
+</div>
+<div id="toast" role="status"></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
