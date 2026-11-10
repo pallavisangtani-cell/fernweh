@@ -14,6 +14,7 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - `src/platform.js`: everything tied to claude.ai Artifacts (`sampleJson`, `saveFile`, `readUpload`). Swap this file when moving to the Claude API and normal downloads.
 - `src/state.js`: the live journal `S` (never reassigned; `replaceState` swaps contents in place), UI state, `load`/`save`.
 - `src/ui/render.js`: HTML builders and `renderTree`/`renderMain`. `src/main.js`: event wiring and actions.
+- `manifest.webmanifest`, `sw.js`, `icons/`: installable PWA. `sw.js` serves the app network-first and falls back to its cache offline. Bump `VERSION` in `sw.js` and add any new `src/` file to `SHELL` when files change.
 - `legacy/travel-journal.html`: the original single file, kept for reference and for republishing as an Artifact until a bundling step exists.
 
 ## Commands
