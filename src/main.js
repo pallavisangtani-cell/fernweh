@@ -1,23 +1,27 @@
 // Entry point: event wiring and the actions that change state.
 import { TABS, STARTER, SAMPLES } from "./constants.js";
 import { uid, arr, slug } from "./util.js";
-import { findCity, newCity } from "./model.js";
+import { findCity, findTrip, newCity, newTrip, mergeJournal } from "./model.js";
 import { buildPrompt, normRes, mergeRes, chunkText, isRoutable, markPast, applyResult, BRAIN_SCHEMA, PACK_SCHEMA, packPrompt } from "./brain.js";
-import { buildShareDoc, shareText } from "./share.js";
+import { buildShareDoc, shareText, tripShare } from "./share.js";
 import { buildCsv, placesFromCsv } from "./csv.js";
 import { claudeJson, aiError, saveFile, readUpload, setApiKey, testKey } from "./platform.js";
 import { S, sel, brain, shareOpt, ui, load, save, replaceState } from "./state.js";
 import { $, toast, renderTree, renderMain } from "./ui/render.js";
 
 const CHUNK = 12000, MAX_CHUNKS = 6;
-const cur = () => sel.city && findCity(S, sel.city);
+// The open trip and, if one is chosen, the destination: {c, city} (city may be null).
+const cur = () => { var co = sel.trip && findTrip(S, sel.trip); if (!co) return null; var ci = sel.city && co.cities.filter(function (x) { return x.id === sel.city; })[0]; return { c: co, city: ci || null }; };
+// The destination an item belongs to, from its data-cid.
+const cityOf = (el) => { var r = el && el.dataset.cid && findCity(S, el.dataset.cid); return r ? r.city : null; };
+function openTrip(tripId, cityId, tab) { sel.view = "trip"; sel.trip = tripId; sel.city = cityId || null; sel.form = false; sel.pcat = "All"; sel.confirmDel = null; sel.confirmCity = null; if (tab) sel.tab = tab; renderTree(); renderMain(); window.scrollTo(0, 0); }
 function download(name, data, type) { saveFile(name, data, type).then(toast); }
 
 function addPast() {
   var name = $("pc-name").value.trim(); if (!name) { toast("Enter a trip name first."); return; }
   var year = $("pc-year").value.trim(), cs = $("pc-cities").value.split(",").map(function (x) { return x.trim(); }).filter(Boolean), note = $("pc-note").value.trim();
   var co = S.countries.filter(function (c) { return c.name.toLowerCase() === name.toLowerCase(); })[0];
-  if (!co) { co = { id: uid(), name: name, status: "visited", year: year, note: note, cities: [] }; S.countries.push(co); }
+  if (!co) { co = newTrip(name, "visited"); co.year = year; co.note = note; S.countries.push(co); }
   else { co.status = "visited"; if (year) co.year = year; if (note) co.note = note; }
   cs.forEach(function (n) { if (!co.cities.some(function (c) { return c.name.toLowerCase() === n.toLowerCase(); })) co.cities.push(newCity(n, "USD", "completed")); });
   save(); renderTree(); renderMain(); toast(name + " added to your passport.");
@@ -46,12 +50,14 @@ async function runBrain() {
 function applyBrain() {
   var r = brain.res; if (!r) return;
   var done = brain.done, main = applyResult(S, r, done);
-  brain.text = ""; brain.res = null; sel.city = main.id; sel.tab = "over"; sel.view = "city"; sel.form = false;
-  save(); renderTree(); renderMain(); toast(done ? "Past trip added to your journal and passport." : "Added to your journal.");
+  brain.text = ""; brain.res = null; save();
+  var where = findCity(S, main.id);
+  openTrip(where.c.id, where.c.cities.length > 1 ? null : main.id, "over");
+  toast(done ? "Past trip added to your journal and passport." : "Added to your journal.");
 }
 
 async function suggestPack() {
-  var f = cur(); if (!f || ui.packBusy) return;
+  var f = cur(); if (!f || !f.city || ui.packBusy) return;
   ui.packBusy = true; renderMain();
   try {
     var have = f.city.packing.map(function (x) { return x.text; }).join(", ");
@@ -63,38 +69,78 @@ async function suggestPack() {
 }
 
 function importCSV(text) {
-  var f = findCity(S, sel.city); if (!f) return;
+  var f = cur(); if (!f || !f.city) { toast("Choose a destination first, then import."); return; }
   var rows = placesFromCsv(text); if (!rows.length) return;
   rows.forEach(function (p) { p.id = uid(); f.city.places.push(p); });
   save(); renderMain(); toast("Places imported. Set a type on each one so they filter when you share.");
 }
 
+function importJournal(text) {
+  var d; try { d = JSON.parse(text); } catch (e) { toast("That file is not a Fernweh file."); return; }
+  if (!d || !Array.isArray(d.countries)) { toast("That file is not a Fernweh file."); return; }
+  var n = mergeJournal(S, d); save(); renderTree(); renderMain();
+  toast("Added " + n.trips + (n.trips === 1 ? " trip, " : " trips, ") + n.destinations + (n.destinations === 1 ? " destination and " : " destinations and ") + n.items + (n.items === 1 ? " item." : " items."));
+}
+
+/** The destination a new item goes to: the chosen one, or the one picked in the form. */
+function formCity(f) {
+  if (f.city) return f.city;
+  var pick = document.querySelector('#form [data-f="__city"]');
+  var id = pick ? pick.value : (f.c.cities[0] && f.c.cities[0].id);
+  return f.c.cities.filter(function (c) { return c.id === id; })[0] || null;
+}
+
 document.addEventListener("click", function (e) {
   var b = e.target.closest("[data-act]"); if (!b) return;
-  var a = b.dataset.act, id = b.dataset.id, L = b.dataset.list, f = cur();
-  if (a === "addCountry") { var i = $("newCountry"), v = i.value.trim(); if (!v) return; S.countries.push({ id: uid(), name: v, status: "planned", year: "", note: "", cities: [] }); i.value = ""; save(); renderTree(); renderMain(); toast("Trip added. Now add a destination to it."); }
+  var a = b.dataset.act, id = b.dataset.id, L = b.dataset.list, f = cur(), ic = cityOf(b);
+  if (a === "addCountry") { var i = $("newCountry"), v = i.value.trim(); if (!v) return; var t = newTrip(v); S.countries.push(t); i.value = ""; save(); openTrip(t.id, null, "over"); toast("Trip added. Now add its destinations."); }
+  else if (a === "trip") { openTrip(id, null, "over"); }
+  else if (a === "pick") { var w = findCity(S, id); if (w) openTrip(w.c.id, id, sel.tab === "over" ? "itin" : sel.tab); }
+  else if (a === "dest") { sel.city = id || null; sel.form = false; sel.pcat = "All"; sel.confirmCity = null; renderTree(); renderMain(); }
   else if (a === "delCountry") { sel.confirmDel = id; renderMain(); }
   else if (a === "delNo") { sel.confirmDel = null; renderMain(); }
-  else if (a === "delYes") { sel.confirmDel = null; S.countries = S.countries.filter(function (c) { return c.id !== id; }); if (sel.city && !findCity(S, sel.city)) sel.city = null; save(); renderTree(); renderMain(); }
-  else if (a === "addCity") { var inp = document.querySelector('[data-cityin="' + id + '"]'), v2 = inp.value.trim(); if (!v2) return; var co = S.countries.filter(function (c) { return c.id === id; })[0], nc = newCity(v2); co.cities.push(nc); sel.city = nc.id; sel.tab = "over"; sel.view = "city"; sel.form = false; save(); renderTree(); renderMain(); }
-  else if (a === "pick") { sel.city = id; sel.view = "city"; sel.form = false; sel.pcat = "All"; sel.tab = "over"; renderTree(); renderMain(); window.scrollTo(0, 0); }
+  else if (a === "delYes") { sel.confirmDel = null; S.countries = S.countries.filter(function (c) { return c.id !== id; }); sel.trip = null; sel.city = null; sel.view = "home"; save(); renderTree(); renderMain(); toast("Trip removed."); }
+  else if (a === "delCity") { sel.confirmCity = id; renderMain(); }
+  else if (a === "delCityNo") { sel.confirmCity = null; renderMain(); }
+  else if (a === "delCityYes" && f) { f.c.cities = f.c.cities.filter(function (c) { return c.id !== id; }); sel.city = null; sel.confirmCity = null; save(); renderTree(); renderMain(); toast("Destination removed."); }
+  else if (a === "addCity") { var inp = document.querySelector('[data-cityin="' + id + '"]'), v2 = inp.value.trim(); if (!v2) return; var co = findTrip(S, id), nc = newCity(v2, co.cur, co.status === "visited" ? "completed" : "planning"); co.cities.push(nc); save(); openTrip(co.id, nc.id, sel.tab === "over" ? "itin" : sel.tab); }
   else if (a === "tab") { sel.tab = id; sel.form = false; renderMain(); }
   else if (a === "toggleForm") { sel.form = !sel.form; renderMain(); }
-  else if (a === "add" && f) { var o = { id: uid() }; document.querySelectorAll("#form [data-f]").forEach(function (x) { o[x.dataset.f] = x.value.trim(); }); if (!o[TABS[sel.tab].req]) return; f.city[sel.tab].push(o); sel.form = false; save(); renderTree(); renderMain(); }
-  else if (a === "del" && f) { f.city[L] = f.city[L].filter(function (x) { return x.id !== id; }); save(); renderMain(); }
-  else if (a === "flip" && f) { f.city[L].forEach(function (x) { if (x.id !== id) return; if (b.dataset.k === "status") x.status = x.status === "confirmed" ? "tentative" : "confirmed"; else x.booked = x.booked === "yes" ? "no" : "yes"; }); save(); renderMain(); }
-  else if (a === "tick" && f) { f.city.packing.forEach(function (x) { if (x.id === id) x.done = b.checked; }); save(); renderMain(); }
-  else if (a === "starter" && f) { STARTER.forEach(function (t) { f.city.packing.push({ id: uid(), text: t }); }); save(); renderMain(); }
+  else if (a === "add" && f) {
+    var tc = formCity(f); if (!tc) { toast("Add a destination first."); return; }
+    var o = { id: uid() }; document.querySelectorAll("#form [data-f]").forEach(function (x) { if (x.dataset.f !== "__city") o[x.dataset.f] = x.value.trim(); });
+    if (!o[TABS[sel.tab].req]) return;
+    tc[sel.tab].push(o); sel.form = false; save(); renderTree(); renderMain();
+  }
+  else if (a === "del" && ic) { ic[L] = ic[L].filter(function (x) { return x.id !== id; }); save(); renderMain(); }
+  else if (a === "flip" && ic) {
+    ic[L].forEach(function (x) {
+      if (x.id !== id) return;
+      if (b.dataset.k === "status") x.status = x.status === "confirmed" ? "tentative" : "confirmed";
+      else if (b.dataset.k === "visit") x.status = x.status === "visited" ? "want" : "visited";
+      else x.booked = x.booked === "yes" ? "no" : "yes";
+    });
+    save(); renderMain();
+  }
+  else if (a === "tick" && ic) { ic.packing.forEach(function (x) { if (x.id === id) x.done = b.checked; }); save(); renderMain(); }
+  else if (a === "starter" && f && f.city) { STARTER.forEach(function (t) { f.city.packing.push({ id: uid(), text: t }); }); save(); renderMain(); }
   else if (a === "suggestPack") { suggestPack(); }
-  else if (a === "importPick") { $("csv").click(); }
+  else if (a === "importPick") { if (!f || !f.city) { toast("Choose a destination first, then import."); return; } $("csv").click(); }
   else if (a === "pcat") { sel.pcat = id; renderMain(); }
-  else if (a === "toggleDone" && f) { var d = f.city.status === "completed"; f.city.status = d ? "planning" : "completed"; if (!d) f.c.status = "visited"; save(); renderTree(); renderMain(); toast(d ? "Trip reopened." : "Trip marked as completed. " + f.c.name + " is in your passport."); }
-  else if (a === "share" && f) { sel.view = "share"; sel.shareText = ""; shareOpt.cat = "All"; renderMain(); }
+  else if (a === "fstat") { sel.fstat = id; renderMain(); }
+  else if (a === "ftype") { sel.ftype = id; renderMain(); }
+  else if (a === "faward") { sel.faward = sel.faward === id ? "" : id; renderMain(); }
+  else if (a === "toggleDone" && f) {
+    var d = f.c.status === "visited"; f.c.status = d ? "planned" : "visited";
+    f.c.cities.forEach(function (ci) { ci.status = d ? "planning" : "completed"; });
+    save(); renderTree(); renderMain(); toast(d ? "Trip reopened." : "Trip marked as completed and added to your passport.");
+  }
+  else if (a === "share" && f) { sel.view = "share"; sel.shareText = ""; shareOpt.cat = "All"; renderMain(); window.scrollTo(0, 0); }
   else if (a === "shopt") { shareOpt[b.dataset.k] = b.checked; }
   else if (a === "shcat") { shareOpt.cat = id; renderMain(); }
-  else if (a === "dlShare" && f) { download(slug(f.city.name) + "-trip-guide.html", buildShareDoc(f, shareOpt), "text/html"); }
-  else if (a === "dlCsv" && f) { download(slug(f.city.name) + "-trip.csv", buildCsv(f), "text/csv"); }
-  else if (a === "copyShare" && f) { var t = shareText(f, shareOpt); try { navigator.clipboard.writeText(t).then(function () { toast("Copied to clipboard."); }, function () { sel.shareText = t; renderMain(); }); } catch (x) { sel.shareText = t; renderMain(); } }
+  else if (a === "dlShare" && f) { download(slug(f.c.name) + "-trip-guide.html", buildShareDoc(tripShare(f.c), shareOpt), "text/html"); }
+  else if (a === "dlCsv" && f) { download(slug(f.c.name) + "-trip.csv", buildCsv(tripShare(f.c)), "text/csv"); }
+  else if (a === "copyShare" && f) { var t2 = shareText(tripShare(f.c), shareOpt); try { navigator.clipboard.writeText(t2).then(function () { toast("Copied to clipboard."); }, function () { sel.shareText = t2; renderMain(); }); } catch (x) { sel.shareText = t2; renderMain(); } }
   else if (a === "cstatus") { S.countries.forEach(function (c) { if (c.id === id) c.status = c.status === "visited" ? "planned" : "visited"; }); save(); renderTree(); renderMain(); }
   else if (a === "pf") { sel.pf = id; renderMain(); }
   else if (a === "addPast") { addPast(); }
@@ -104,33 +150,36 @@ document.addEventListener("click", function (e) {
   else if (a === "testKey") { ui.keyBusy = true; renderMain(); testKey().then(function () { toast("Claude is connected and working."); }, function (err) { toast(aiError(err)); }).then(function () { ui.keyBusy = false; renderMain(); }); }
   else if (a === "backup") { sel.view = "settings"; renderTree(); renderMain(); }
   else if (a === "dlBackup") { download("fernweh-backup-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(S, null, 2), "application/json"); }
-    else if (a === "closeView") { sel.view = "city"; sel.shareText = ""; renderTree(); renderMain(); }
+  else if (a === "mergePick") { $("mergeFile").click(); }
+  else if (a === "closeView") { sel.view = "trip"; sel.shareText = ""; renderTree(); renderMain(); }
   else if (a === "sample") { brain.text = SAMPLES[+id][1]; renderMain(); }
   else if (a === "bdone") { brain.done = b.checked; }
   else if (a === "pickFile") { $("brainFile").click(); }
   else if (a === "organise") { runBrain(); }
   else if (a === "applyBrain") { applyBrain(); }
   else if (a === "discardBrain") { brain.res = null; renderMain(); }
-  else if (a === "restore") { try { var d2 = JSON.parse($("bk").value); if (!d2 || !Array.isArray(d2.countries)) throw 0; replaceState(d2); sel.city = null; sel.view = "home"; save(); renderTree(); renderMain(); toast("Journal restored."); } catch (x) { toast("That text is not a valid backup."); } }
+  else if (a === "restore") { try { var d2 = JSON.parse($("bk").value); if (!d2 || !Array.isArray(d2.countries)) throw 0; replaceState(d2); sel.trip = null; sel.city = null; sel.view = "home"; save(); renderTree(); renderMain(); toast("Journal restored."); } catch (x) { toast("That text is not a valid backup."); } }
 });
 
 document.addEventListener("change", function (e) {
-  var t = e.target, f = cur();
-  if (t.id === "csv" && t.files[0]) { var r = new FileReader(); r.onload = function () { importCSV(String(r.result)); }; r.readAsText(t.files[0]); }
+  var t = e.target, f = cur(), ic = cityOf(t);
+  if (t.id === "csv" && t.files[0]) { var r = new FileReader(); r.onload = function () { importCSV(String(r.result)); }; r.readAsText(t.files[0]); t.value = ""; }
+  else if (t.id === "mergeFile" && t.files[0]) { var r2 = new FileReader(); r2.onload = function () { importJournal(String(r2.result)); }; r2.readAsText(t.files[0]); t.value = ""; }
   else if (t.id === "brainFile" && t.files[0]) {
     var file = t.files[0]; t.value = "";
     readUpload(file).then(function (txt) { brain.text = (brain.text ? brain.text + "\n\n" : "") + "## File: " + file.name + "\n" + txt; brain.err = ""; renderMain(); toast("Loaded " + file.name + " (" + txt.length.toLocaleString() + " characters)."); }).catch(function (err) { brain.err = (err && err.message) || "Could not read that file."; renderMain(); });
   }
-  else if (t.dataset && t.dataset.spent && f) { f.city[t.dataset.list].forEach(function (x) { if (x.id === t.dataset.spent) x.spent = t.value; }); save(); renderMain(); }
-  else if (t.dataset && t.dataset.cur && f) { f.city.cur = t.value.trim().toUpperCase().slice(0, 4) || "USD"; save(); renderMain(); }
-  else if (t.dataset && t.dataset.tb && f) { f.city.tbudget = t.value; save(); renderMain(); }
+  else if (t.dataset && t.dataset.spent && ic) { ic[t.dataset.list].forEach(function (x) { if (x.id === t.dataset.spent) x.spent = t.value; }); save(); renderMain(); }
+  else if (t.dataset && t.dataset.cur && f) { f.c.cur = t.value.trim().toUpperCase().slice(0, 4) || "USD"; save(); renderMain(); }
+  else if (t.dataset && t.dataset.tb && f) { f.c.tbudget = t.value; save(); renderMain(); }
   else if (t.dataset && t.dataset.cyear) { S.countries.forEach(function (c) { if (c.id === t.dataset.cyear) c.year = t.value.trim(); }); save(); renderTree(); }
   else if (t.dataset && t.dataset.cnote) { S.countries.forEach(function (c) { if (c.id === t.dataset.cnote) c.note = t.value.trim(); }); save(); }
 });
 
 document.addEventListener("input", function (e) {
-  if (e.target.id === "brainIn") { brain.text = e.target.value; return; }
-  if (e.target.id === "notes") { var f = cur(); if (f) { f.city.notes = e.target.value; save(); } }
+  var t = e.target;
+  if (t.id === "brainIn") { brain.text = t.value; return; }
+  if (t.dataset && t.dataset.notes) { var w = findCity(S, t.dataset.notes); if (w) { w.city.notes = t.value; save(); } }
 });
 
 document.addEventListener("keydown", function (e) {

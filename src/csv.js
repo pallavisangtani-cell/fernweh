@@ -14,6 +14,7 @@ export function buildCsv(f) {
   c.itin.forEach(function (i) { rows.push(["Activity", i.text, "", i.day ? "Day " + i.day : "", i.time, i.via, i.cost, i.spent, i.status, i.booked, ""]); });
   c.trans.forEach(function (i) { rows.push(["Transport", (i.no ? i.no + " " : "") + i.route, i.mode, i.date, i.time, i.via, i.cost, i.spent, i.status, i.booked, i.ref]); });
   c.stays.forEach(function (i) { rows.push(["Stay", i.name, "", range(i.checkin, i.checkout), "", i.via, i.cost, i.spent, i.status, i.booked, i.conf]); });
+  (c.food || []).forEach(function (i) { rows.push(["Restaurant", i.name, [i.type, i.michelin, i.best50 === "yes" ? "World's 50 Best" : "", i.status === "visited" ? "Visited" : "Want to visit", i.note].filter(Boolean).join(" - "), "", "", "", "", "", "", "", ""]); });
   c.places.forEach(function (i) { rows.push(["Place", i.name, (i.cat || "Other") + (i.note ? " - " + i.note : ""), "", "", "", "", "", "", "", ""]); });
   c.budget.forEach(function (i) { rows.push(["Cost", i.label, i.cat, "", "", "", i.cost, i.spent, "", "", ""]); });
   return rows.map(function (r) { return r.map(csvCell).join(","); }).join("\n");

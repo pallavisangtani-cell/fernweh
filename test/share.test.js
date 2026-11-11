@@ -10,23 +10,25 @@ function trip() {
   city.itin.push({ day: "1", time: "13:00", text: "Lunch at Time Out Market", cost: "40" });
   city.trans.push({ route: "DXB to LIS", no: "EK191", ref: "HG8P22", cost: "2400" });
   city.stays.push({ name: "Hotel Avenida", checkin: "2024-03-12", checkout: "2024-03-16", conf: "88213", cost: "540" });
-  city.places.push({ name: "Time Out Market", cat: "Food & drink" }, { name: "time out market", cat: "Food & drink" }, { name: "Belém Tower", cat: "Sights", link: "https://maps.app.goo.gl/abc" }, { name: "<script>", cat: "Other" });
+  city.food = [{ name: "Time Out Market", type: "Casual", status: "want" }, { name: "Belcanto", type: "Fine dining", michelin: "2 stars", best50: "yes", status: "visited" }];
+  city.places.push({ name: "time out market", cat: "Other" }, { name: "Belém Tower", cat: "Sights", link: "https://maps.app.goo.gl/abc" }, { name: "<script>", cat: "Other" });
   return { c: { name: "Portugal" }, city };
 }
 
 describe("shareItems", () => {
   test("dedupes by name and adds stays as hotels", () => {
     const items = shareItems(trip().city);
-    assert.deepEqual(items.map((i) => i.name), ["Time Out Market", "Belém Tower", "<script>", "Hotel Avenida"]);
-    assert.equal(items[3].cat, "Hotel"); assert.equal(items[3].note, "2024-03-12 to 2024-03-16");
+    assert.deepEqual(items.map((i) => i.name), ["Time Out Market", "Belcanto", "Belém Tower", "<script>", "Hotel Avenida"]);
+    assert.equal(items[1].cat, "Restaurants"); assert.equal(items[1].note, "Fine dining · 2 stars · World's 50 Best");
+    assert.equal(items[4].cat, "Hotel"); assert.equal(items[4].note, "2024-03-12 to 2024-03-16");
   });
   test("uses the saved link when it is a URL, else a Maps search", () => {
     const items = shareItems(trip().city);
-    assert.equal(items[1].url, "https://maps.app.goo.gl/abc");
+    assert.equal(items[2].url, "https://maps.app.goo.gl/abc");
     assert.match(items[0].url, /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=Time%20Out%20Market%2C%20Lisbon$/);
   });
   test("catsOf follows the app's category order", () => {
-    assert.deepEqual(catsOf(shareItems(trip().city)), ["Food & drink", "Hotel", "Sights", "Other"]);
+    assert.deepEqual(catsOf(shareItems(trip().city)), ["Restaurants", "Hotel", "Sights", "Other"]);
   });
 });
 
@@ -71,4 +73,16 @@ describe("totals and fix", () => {
     assert.equal(co.status, "planned"); assert.equal(co.year, "");
     assert.deepEqual(ci.packing, []); assert.equal(ci.cur, "USD"); assert.equal(ci.status, "planning");
   });
+});
+
+import { tripShare } from "../src/share.js";
+test("tripShare covers every destination and links places to their own city", () => {
+  const a = newCity("Düsseldorf"), b = newCity("Frankfurt");
+  a.places.push({ name: "Rheinturm", cat: "Sights" }); b.stays.push({ name: "Aloft", conf: "X1" });
+  const f = tripShare({ name: "Germany 2026", cur: "EUR", tbudget: "1500", status: "planned", cities: [a, b] });
+  assert.equal(f.city.name, "Germany 2026"); assert.equal(f.c.name, "Düsseldorf · Frankfurt");
+  const items = shareItems(f.city);
+  assert.match(items[0].url, /Rheinturm%2C%20D%C3%BCsseldorf$/);
+  assert.match(items[1].url, /Aloft%2C%20Frankfurt$/);
+  assert.ok(!buildShareDoc(f, { itin: true, costs: false }).includes("X1"));
 });

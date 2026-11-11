@@ -25,18 +25,21 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - `npm start`: zero-dependency static server on http://localhost:5173 (ES modules do not load from `file://`).
 
 ## Data model
-- `S.countries[]`: `{id, name, status: "planned"|"visited", year, note, cities[]}`
-- city: `{id, name, cur, tbudget, status: "planning"|"completed", itin[], trans[], stays[], places[], budget[], packing[], notes}`
+- `S.countries[]` (a **trip**): `{id, name, status: "planned"|"visited", year, note, tbudget, cur, cities[]}`. Budget and currency are trip-level; all amounts in a trip are in its `cur`.
+- city (a **destination**): `{id, name, status: "planning"|"completed", itin[], trans[], stays[], food[], places[], budget[], packing[], notes}`. Old saves also carry `cur`/`tbudget` per city; `fix()` lifts them to the trip and ignores them after.
+- `food` items (restaurants): `{id, name, type (FOOD_TYPES), status: "want"|"visited", michelin (MICHELIN), best50: "yes"|"", note, link}`. `fix()` moves old `places` in "Food & drink" into `food` once (`_foodMoved` flag).
 - Bookable items (`itin`, `trans`, `stays`) carry `status` ("tentative"|"confirmed"), `booked` ("yes"|"no"), `via` (carrier or booking platform), `cost` (planned) and `spent`.
 - `trans` items also have `mode`, `no` (flight or train number), `route`, `date`, `time`, `ref` (booking reference).
-- `places` items have `cat`: Food & drink, Hotel, Vineyard, Sights, Activity, Shopping, Other.
+- `places` items have `cat`: Hotel, Vineyard, Sights, Activity, Shopping, Other.
 
 ## Features
 - UI words: a `country` is shown as a **trip** and a `city` as a **destination**. The data model keeps the old names.
-- Country > city tree, with a trip budget per city and planned, spent and left totals.
+- Home shows one card per trip. The trip page has the trip budget and totals across destinations, a destination switcher (All or one city), and tabs. List tabs are per destination; in All they are grouped by city, items carry `data-cid`, and the add form asks which destination.
+- Restaurants tab: filter by want/visited, category and award (`filterFood`).
+- Settings > Add trips from a file: `mergeJournal` adds a Fernweh JSON file without replacing anything (matched by name, skips known ids). Use this to import a user's past trips: convert their data to that JSON, never commit it to the repo.
 - Overview, itinerary by day, flights and transport, stays, places, other costs, packing, notes.
 - Passport page: add past countries with a year, no trip planning needed.
-- Share trip: builds a standalone HTML guide (places filterable by type, each with a Google Maps search link), plus copy-as-text and CSV. Booking references and costs are excluded unless "Include budget and costs" is ticked.
+- Share trip (whole trip, via `tripShare`): builds a standalone HTML guide (places filterable by type, each with a Google Maps search link), plus copy-as-text and CSV. Booking references and costs are excluded unless "Include budget and costs" is ticked.
 - Brain Box: pastes or uploads (xlsx, docx, csv, txt) go to an LLM that returns JSON; each item carries its own city and country. A "past trips" tickbox marks everything completed, booked and spent, and adds the country to the passport.
 
 ## Known limits

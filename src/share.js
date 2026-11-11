@@ -5,20 +5,38 @@ import { totals, sortKey, groupByDay } from "./model.js";
 
 export function shareItems(city) {
   var out = [], seen = {};
+  (city.food || []).forEach(function (r) {
+    var k = r.name.toLowerCase(); if (seen[k]) return; seen[k] = 1;
+    var tags = [r.type && r.type !== "Other" ? r.type : "", r.michelin, r.best50 === "yes" ? "World's 50 Best" : ""].filter(Boolean).join(" · ");
+    out.push({ name: r.name, cat: "Restaurants", note: [tags, r.note].filter(Boolean).join(" · "), url: /^https?:/i.test(r.link || "") ? r.link : mapsUrl(r.name, r._city || city.name) });
+  });
   city.places.forEach(function (p) {
     var k = p.name.toLowerCase(); if (seen[k]) return; seen[k] = 1;
-    out.push({ name: p.name, cat: p.cat || "Other", note: p.note || "", url: /^https?:/i.test(p.link || "") ? p.link : mapsUrl(p.name, city.name) });
+    out.push({ name: p.name, cat: p.cat || "Other", note: p.note || "", url: /^https?:/i.test(p.link || "") ? p.link : mapsUrl(p.name, p._city || city.name) });
   });
   city.stays.forEach(function (s) {
     var k = s.name.toLowerCase(); if (seen[k]) return; seen[k] = 1;
-    out.push({ name: s.name, cat: "Hotel", note: (s.checkin || s.checkout) ? (s.checkin || "?") + " to " + (s.checkout || "?") : "", url: mapsUrl(s.name, city.name) });
+    out.push({ name: s.name, cat: "Hotel", note: (s.checkin || s.checkout) ? (s.checkin || "?") + " to " + (s.checkout || "?") : "", url: mapsUrl(s.name, s._city || city.name) });
   });
   return out;
 }
 
+/**
+ * A whole trip shaped like one destination, so the share page, text and CSV cover every city.
+ * Each item keeps its own city in _city for Maps links.
+ */
+export function tripShare(co) {
+  var city = { name: co.name, cur: co.cur, tbudget: co.tbudget, status: co.status === "visited" ? "completed" : "planning", notes: "" };
+  ["itin", "trans", "stays", "food", "places", "budget", "packing"].forEach(function (k) {
+    city[k] = [];
+    co.cities.forEach(function (ci) { (ci[k] || []).forEach(function (it) { city[k].push(Object.assign({ _city: ci.name }, it)); }); });
+  });
+  return { c: { name: co.cities.map(function (ci) { return ci.name; }).join(" · ") || co.name }, city: city };
+}
+
 export function catsOf(items) {
   var c = [];
-  PCATS.forEach(function (x) { if (items.some(function (i) { return i.cat === x; })) c.push(x); });
+  ["Restaurants"].concat(PCATS).forEach(function (x) { if (items.some(function (i) { return i.cat === x; })) c.push(x); });
   items.forEach(function (i) { if (c.indexOf(i.cat) < 0) c.push(i.cat); });
   return c;
 }
