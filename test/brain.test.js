@@ -205,12 +205,12 @@ describe("buildPrompt", () => {
   test("includes the routing rule, current city and text", () => {
     const p = buildPrompt("EK055 DXB to DUS", cur, false, 2026);
     assert.match(p, /FRA to DXB \(going home\) belongs to Frankfurt/);
-    assert.match(p, /Current city in the journal: Frankfurt, Germany/);
+    assert.match(p, /Current destination in the journal: Frankfurt, Germany/);
     assert.match(p, /assume 2026/);
     assert.ok(p.endsWith("TEXT:\nEK055 DXB to DUS"));
   });
   test("past-trip mode tells the model not to guess years", () => {
     assert.match(buildPrompt("x", null, true), /leave the date empty/);
-    assert.match(buildPrompt("x", null, true), /Current city in the journal: none/);
+    assert.match(buildPrompt("x", null, true), /Current destination in the journal: none/);
   });
 });

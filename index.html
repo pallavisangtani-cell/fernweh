@@ -10,25 +10,23 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
-<meta name="theme-color" content="#2b46c9">
+<meta name="theme-color" content="#f6f2ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c1317" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Fernweh">
 </head>
 <body>
 <div class="app">
-<aside>
-  <div class="word">Fernweh<i></i></div>
-  <div class="tag">Your travel journal</div>
-  <button class="nav ai" data-act="brain"><span>AI Brain Box<br><small>Paste plans, bookings, past trips</small></span><span aria-hidden="true">&rarr;</span></button>
-  <button class="nav" data-act="world"><span>Passport</span><small id="passport">0 countries</small></button>
-  <div class="cap">Destinations</div>
-  <div class="addrow"><input id="newCountry" placeholder="Add a country" aria-label="New country" style="flex:1"><button class="btn" data-act="addCountry">Add</button></div>
-  <button class="link2" data-act="world">Add a country you have already visited</button>
+<aside class="side" aria-label="Navigation">
+  <div class="brand"><span class="mark">F</span><div><b>Fernweh</b><small>Your travel journal</small></div></div>
+  <div id="snav"></div>
+  <div class="cap">My trips</div>
   <div id="tree"></div>
-  <div style="margin-top:auto;padding-top:18px"><button class="btn" data-act="backup" style="width:100%">Backup and restore</button></div>
 </aside>
 <main id="main"></main>
 </div>
+<nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
 <div id="toast" role="status"></div>
 <script type="module" src="src/main.js"></script>
 </body>

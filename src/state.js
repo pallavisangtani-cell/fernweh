@@ -3,10 +3,10 @@ import { KEY } from "./constants.js";
 import { fix } from "./model.js";
 
 export const S = { countries: [] };
-export const sel = { city: null, tab: "over", view: "city", form: false, confirmDel: null, pcat: "All", pf: "all", shareText: "" };
+export const sel = { city: null, tab: "over", view: "home", form: false, confirmDel: null, pcat: "All", pf: "all", shareText: "" };
 export const brain = { text: "", busy: false, err: "", res: null, done: false, status: "" };
 export const shareOpt = { itin: true, costs: false, cat: "All" };
-export const ui = { packBusy: false };
+export const ui = { packBusy: false, keyBusy: false };
 
 /** Replace the journal contents in place (used by load and restore). */
 export function replaceState(d) {

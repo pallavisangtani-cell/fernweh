@@ -1,9 +1,10 @@
 // Offline support. Bump VERSION whenever any file in SHELL changes, so installed copies update.
-const VERSION = "fernweh-v1";
+const VERSION = "fernweh-v2";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png",
   "src/styles.css", "src/main.js", "src/constants.js", "src/util.js", "src/model.js", "src/brain.js",
-  "src/csv.js", "src/share.js", "src/platform.js", "src/state.js", "src/ui/render.js"
+  "src/csv.js", "src/share.js", "src/platform.js", "src/state.js", "src/ui/render.js", "src/ui/icons.js",
+  "vendor/anthropic-sdk-1.5.0.js"
 ];
 // Fonts and the Excel/Word readers come from CDNs; keep a copy once fetched.
 const RUNTIME = ["fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com"];

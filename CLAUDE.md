@@ -1,7 +1,7 @@
 # Fernweh travel journal: brief for Claude Code
 
 ## What this is
-A web app (plain JS ES modules, no build step, no dependencies) for one person to plan trips, track bookings and budgets, and keep a passport of countries visited. It currently runs as a published claude.ai Artifact, so it has no server. Everything is stored in the browser's localStorage under the key `travel-journal-v1`.
+A web app (plain JS ES modules, no build step, no dependencies) for one person to plan trips, track bookings and budgets, and keep a passport of countries visited. It is an installable PWA hosted on GitHub Pages, with no server. The journal is stored in the browser's localStorage under `travel-journal-v1`; the user's Claude API key is stored separately under `fernweh-claude-key` and must never be added to the journal or backups.
 
 ## Layout
 - `index.html`: markup shell; loads `src/styles.css` and `src/main.js`.
@@ -11,11 +11,14 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - `src/brain.js`: Brain Box logic with no DOM: `buildPrompt`, `normRes`, `mergeRes`, `chunkText`, `isRoutable`, `markPast`, `applyResult`.
 - `src/csv.js`: `buildCsv`, `csvCell`, `parseCSV`, `placesFromCsv` (Google Maps saved-places import).
 - `src/share.js`: standalone trip guide (`buildShareDoc`) and `shareText`. Both take `{itin, costs}` options.
-- `src/platform.js`: everything tied to claude.ai Artifacts (`sampleJson`, `saveFile`, `readUpload`). Swap this file when moving to the Claude API and normal downloads.
+- `src/platform.js`: Claude calls (`claudeJson`, `testKey`, key storage), file downloads (`saveFile`) and upload reading. Claude is called from the browser with the user's own key via the bundled SDK in `vendor/` (`dangerouslyAllowBrowser`), model `claude-opus-5-5`, structured outputs (`output_config.format`) and server-side `fallbacks: "default"`. The SDK sends the key as `Authorization: Bearer`.
+- `src/brain.js` also holds `BRAIN_SCHEMA` and `PACK_SCHEMA`, the JSON schemas Claude must answer in. Keep `BRAIN_SCHEMA` in step with `normRes`.
 - `src/state.js`: the live journal `S` (never reassigned; `replaceState` swaps contents in place), UI state, `load`/`save`.
-- `src/ui/render.js`: HTML builders and `renderTree`/`renderMain`. `src/main.js`: event wiring and actions.
+- `src/ui/render.js`: screens (home, destination, passport, Claude, settings, share) plus `renderTree` (sidebar and phone tab bar) and `renderMain`. `src/ui/icons.js`: inline icons and cover gradients. `src/main.js`: event wiring and actions.
+- Design: warm sand background, teal brand, coral accent; destinations get a gradient cover; flights render as boarding passes; phones (under 820px) get a bottom tab bar. Check changes at phone width (390px) and in dark mode.
 - `manifest.webmanifest`, `sw.js`, `icons/`: installable PWA. `sw.js` serves the app network-first and falls back to its cache offline. Bump `VERSION` in `sw.js` and add any new `src/` file to `SHELL` when files change.
-- `legacy/travel-journal.html`: the original single file, kept for reference and for republishing as an Artifact until a bundling step exists.
+- `legacy/`: the original Artifact single file and the Gemini-edited version, for reference only. Not loaded by the app.
+- `.github/workflows/pages.yml`: runs `npm test`, then deploys the repo root to GitHub Pages on every push to `main`. A failing test blocks the deploy.
 
 ## Commands
 - `npm test`: Node's built-in test runner (`node --test`), no installs needed. Tests live in `test/` and cover only DOM-free modules.
@@ -29,14 +32,14 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - `places` items have `cat`: Food & drink, Hotel, Vineyard, Sights, Activity, Shopping, Other.
 
 ## Features
+- UI words: a `country` is shown as a **trip** and a `city` as a **destination**. The data model keeps the old names.
 - Country > city tree, with a trip budget per city and planned, spent and left totals.
 - Overview, itinerary by day, flights and transport, stays, places, other costs, packing, notes.
 - Passport page: add past countries with a year, no trip planning needed.
 - Share trip: builds a standalone HTML guide (places filterable by type, each with a Google Maps search link), plus copy-as-text and CSV. Booking references and costs are excluded unless "Include budget and costs" is ticked.
 - Brain Box: pastes or uploads (xlsx, docx, csv, txt) go to an LLM that returns JSON; each item carries its own city and country. A "past trips" tickbox marks everything completed, booked and spent, and adds the country to the passport.
 
-## Known limits of the Artifact version (reasons to move to a real project)
-- The AI calls use the Artifact `sample` capability. In a real project, replace `sampleJson()` in `src/platform.js` with a call to the Claude API, using structured output for the JSON.
+## Known limits
 - No Gmail or Google Maps connection. Hotel and flight confirmations are pasted by hand. A real app could use Gmail OAuth and the Google Maps/Places API for pins and geocoding.
 - No map view. Places only link out to Google Maps.
 - Data lives in one browser. Moving to a database would give sync across devices and real sharing links.
