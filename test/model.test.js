@@ -93,3 +93,25 @@ test("mergeJournal adds new trips, fills existing ones, and is safe to repeat", 
   assert.equal(S.countries[1].name, "Japan");
   assert.deepEqual(mergeJournal(S, incoming()), { trips: 0, destinations: 0, items: 0 });
 });
+
+test("trip dates set by hand win over booking dates", () => {
+  const a = newCity("a"); a.trans.push({ date: "2026-12-01" });
+  assert.deepEqual(tripRange({ start: "2026-11-28", end: "2026-12-10", cities: [a] }), { start: "2026-11-28", end: "2026-12-10" });
+  assert.deepEqual(tripRange({ start: "2026-11-28", end: "", cities: [a] }), { start: "2026-11-28", end: "2026-11-28" });
+  assert.deepEqual(tripRange({ start: "2026-12-10", end: "2026-11-28", cities: [] }), { start: "2026-11-28", end: "2026-12-10" });
+  assert.deepEqual(tripRange({ start: "", end: "", cities: [a] }), { start: "2026-12-01", end: "2026-12-01" });
+});
+test("fix moves packing up to the trip without duplicates", () => {
+  const S = fix({ countries: [{ name: "G", cities: [{ name: "a", packing: [{ id: "1", text: "Scarf" }] }, { name: "b", packing: [{ id: "2", text: "scarf" }, { id: "3", text: "Umbrella", done: true }] }] }] });
+  const t = S.countries[0];
+  assert.deepEqual(t.packing.map((p) => p.text), ["Scarf", "Umbrella"]);
+  assert.equal(t.packing[1].done, true);
+  assert.deepEqual(t.cities.map((c) => c.packing.length), [0, 0]);
+  assert.equal(S.home, ""); assert.equal(t.start, "");
+});
+test("mergeJournal brings trip packing and dates along", () => {
+  const S = fix({ countries: [{ name: "G", cities: [] }] });
+  const n = mergeJournal(S, { countries: [{ name: "g", start: "2026-12-01", end: "2026-12-06", packing: [{ id: "p1", text: "Gloves" }], cities: [] }] });
+  assert.equal(n.items, 1); assert.equal(S.countries[0].packing[0].text, "Gloves"); assert.equal(S.countries[0].start, "2026-12-01");
+  assert.equal(mergeJournal(S, { countries: [{ name: "g", packing: [{ id: "p1", text: "Gloves" }], cities: [] }] }).items, 0);
+});

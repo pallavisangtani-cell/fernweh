@@ -12,6 +12,8 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - `src/csv.js`: `buildCsv`, `csvCell`, `parseCSV`, `placesFromCsv` (Google Maps saved-places import).
 - `src/share.js`: standalone trip guide (`buildShareDoc`) and `shareText`. Both take `{itin, costs}` options.
 - `src/platform.js`: Claude calls (`claudeJson`, `testKey`, key storage), file downloads (`saveFile`) and upload reading. Claude is called from the browser with the user's own key via the bundled SDK in `vendor/` (`dangerouslyAllowBrowser`), model `claude-opus-5-5`, structured outputs (`output_config.format`) and server-side `fallbacks: "default"`. The SDK sends the key as `Authorization: Bearer`.
+- `src/weather.js`: Open-Meteo (no key). `weatherPlan` picks forecast (within 16 days), actual (past) or typical (same dates last year); results cached in localStorage `fernweh-weather`.
+- `src/gmail.js`: read-only Gmail import via Google Identity Services token client, using the user's own OAuth client ID (Settings, localStorage `fernweh-gmail-client`). Emails go Gmail -> device -> Claude; nothing stored.
 - `src/brain.js` also holds `BRAIN_SCHEMA` and `PACK_SCHEMA`, the JSON schemas Claude must answer in. Keep `BRAIN_SCHEMA` in step with `normRes`.
 - `src/state.js`: the live journal `S` (never reassigned; `replaceState` swaps contents in place), UI state, `load`/`save`.
 - `src/ui/render.js`: screens (home, destination, passport, Claude, settings, share) plus `renderTree` (sidebar and phone tab bar) and `renderMain`. `src/ui/icons.js`: inline icons and cover gradients. `src/main.js`: event wiring and actions.
@@ -25,7 +27,8 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - `npm start`: zero-dependency static server on http://localhost:5173 (ES modules do not load from `file://`).
 
 ## Data model
-- `S.countries[]` (a **trip**): `{id, name, status: "planned"|"visited", year, note, tbudget, cur, cities[]}`. Budget and currency are trip-level; all amounts in a trip are in its `cur`.
+- `S.home`: the traveller's home city (Settings), used in the Brain Box routing rule.
+- `S.countries[]` (a **trip**): `{id, name, status: "planned"|"visited", year, note, tbudget, cur, start, end, packing[], cities[]}`. `start`/`end` set by hand win over booking dates in `tripRange`. Packing is trip-level (items `{id, text, cat?, why?, done}`); `fix()` lifts old per-city packing. Budget and currency are trip-level; all amounts in a trip are in its `cur`.
 - city (a **destination**): `{id, name, status: "planning"|"completed", itin[], trans[], stays[], food[], places[], budget[], packing[], notes}`. Old saves also carry `cur`/`tbudget` per city; `fix()` lifts them to the trip and ignores them after.
 - `food` items (restaurants): `{id, name, type (FOOD_TYPES), status: "want"|"visited", michelin (MICHELIN), best50: "yes"|"", note, link}`. `fix()` moves old `places` in "Food & drink" into `food` once (`_foodMoved` flag).
 - Bookable items (`itin`, `trans`, `stays`) carry `status` ("tentative"|"confirmed"), `booked` ("yes"|"no"), `via` (carrier or booking platform), `cost` (planned) and `spent`.

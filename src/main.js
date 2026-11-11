@@ -1,19 +1,22 @@
 // Entry point: event wiring and the actions that change state.
 import { TABS, STARTER, SAMPLES } from "./constants.js";
 import { uid, arr, slug } from "./util.js";
-import { findCity, findTrip, newCity, newTrip, mergeJournal } from "./model.js";
+import { findCity, findTrip, newCity, newTrip, mergeJournal, tripRange, todayIso } from "./model.js";
 import { buildPrompt, normRes, mergeRes, chunkText, isRoutable, markPast, applyResult, BRAIN_SCHEMA, PACK_SCHEMA, packPrompt } from "./brain.js";
 import { buildShareDoc, shareText, tripShare } from "./share.js";
 import { buildCsv, placesFromCsv } from "./csv.js";
 import { claudeJson, aiError, saveFile, readUpload, setApiKey, testKey } from "./platform.js";
 import { S, sel, brain, shareOpt, ui, load, save, replaceState } from "./state.js";
-import { $, toast, renderTree, renderMain } from "./ui/render.js";
+import { $, toast, renderTree, renderMain, destRange, weatherKey } from "./ui/render.js";
+import { weatherText } from "./weather.js";
+import { setClientId, findBookings, readEmails, emailForClaude } from "./gmail.js";
 
 const CHUNK = 12000, MAX_CHUNKS = 6;
 // The open trip and, if one is chosen, the destination: {c, city} (city may be null).
 const cur = () => { var co = sel.trip && findTrip(S, sel.trip); if (!co) return null; var ci = sel.city && co.cities.filter(function (x) { return x.id === sel.city; })[0]; return { c: co, city: ci || null }; };
 // The destination an item belongs to, from its data-cid.
-const cityOf = (el) => { var r = el && el.dataset.cid && findCity(S, el.dataset.cid); return r ? r.city : null; };
+// Packing items carry "trip:<id>" because the packing list belongs to the trip.
+const cityOf = (el) => { var c = el && el.dataset.cid; if (!c) return null; if (c.indexOf("trip:") === 0) return findTrip(S, c.slice(5)); var r = findCity(S, c); return r ? r.city : null; };
 function openTrip(tripId, cityId, tab) { sel.view = "trip"; sel.trip = tripId; sel.city = cityId || null; sel.form = false; sel.pcat = "All"; sel.confirmDel = null; sel.confirmCity = null; if (tab) sel.tab = tab; renderTree(); renderMain(); window.scrollTo(0, 0); }
 function download(name, data, type) { saveFile(name, data, type).then(toast); }
 
@@ -35,7 +38,7 @@ async function runBrain() {
     if (capped) chunks = chunks.slice(0, MAX_CHUNKS);
     for (var i = 0; i < chunks.length; i++) {
       brain.status = chunks.length > 1 ? "Reading part " + (i + 1) + " of " + chunks.length + "…" : ""; renderMain();
-      var r = await claudeJson(buildPrompt(chunks[i], f, brain.done), BRAIN_SCHEMA, "medium");
+      var r = await claudeJson(buildPrompt(chunks[i], f, brain.done, null, S.home), BRAIN_SCHEMA, "medium");
       var res = normRes(r, f);
       merged = merged ? mergeRes(merged, res) : res;
     }
@@ -57,15 +60,56 @@ function applyBrain() {
 }
 
 async function suggestPack() {
-  var f = cur(); if (!f || !f.city || ui.packBusy) return;
+  var f = cur(); if (!f || ui.packBusy) return;
+  var co = f.c;
   ui.packBusy = true; renderMain();
   try {
-    var have = f.city.packing.map(function (x) { return x.text; }).join(", ");
-    var r = await claudeJson(packPrompt(f, have), PACK_SCHEMA, "low");
-    arr(r && r.items).slice(0, 15).forEach(function (t) { f.city.packing.push({ id: uid(), text: String(t).trim() }); });
-    save();
+    var dests = co.cities.map(function (ci) {
+      var r = destRange(co, ci), st = r && ui.weather[weatherKey(ci, r)];
+      return {
+        name: ci.name,
+        weather: st && st.state === "ok" ? weatherText(st.w) : "",
+        activities: ci.itin.map(function (x) { return x.text; }).filter(Boolean),
+        dining: ci.food.map(function (x) { return x.name + (x.type || x.michelin ? " (" + [x.type, x.michelin].filter(Boolean).join(", ") + ")" : ""); })
+      };
+    });
+    if (!dests.length) dests = [{ name: co.name, weather: "", activities: [], dining: [] }];
+    var ctx = { trip: co.name, home: S.home, range: tripRange(co), dests: dests, have: co.packing.map(function (x) { return x.text; }) };
+    var r = await claudeJson(packPrompt(ctx), PACK_SCHEMA, "low");
+    var have = {}; co.packing.forEach(function (x) { have[x.text.toLowerCase()] = 1; });
+    var n = 0;
+    arr(r && r.items).slice(0, 20).forEach(function (it) {
+      var t = String((it && it.text) || "").trim(); if (!t || have[t.toLowerCase()]) return;
+      co.packing.push({ id: uid(), text: t, cat: String(it.cat || ""), why: String(it.why || "").trim() }); n++;
+    });
+    save(); toast(n ? "Claude added " + n + " suggestions." : "Nothing new to add.");
   } catch (e) { toast(aiError(e)); }
   ui.packBusy = false; renderMain();
+}
+
+async function gmailFind() {
+  var g = ui.gmail; if (g.busy) return;
+  g.busy = true; g.err = ""; g.status = "Signing in to Google…"; renderMain();
+  try {
+    g.status = "Searching your inbox…"; renderMain();
+    g.list = await findBookings(g.months, 40);
+    g.picked = {}; g.list.slice(0, 15).forEach(function (m) { g.picked[m.id] = true; });
+  } catch (e) { g.err = (e && e.message) || "Could not read Gmail."; }
+  g.busy = false; g.status = ""; renderMain();
+}
+
+async function gmailSend() {
+  var g = ui.gmail, ids = Object.keys(g.picked).filter(function (k) { return g.picked[k]; }).slice(0, 15);
+  if (!ids.length || g.busy) return;
+  g.busy = true; g.err = ""; g.status = "Reading " + ids.length + (ids.length === 1 ? " email…" : " emails…"); renderMain();
+  try {
+    var mails = await readEmails(ids);
+    brain.text = mails.map(function (m) { return emailForClaude(m); }).join("\n\n---\n\n");
+    g.busy = false; g.status = ""; g.list = null;
+    await runBrain();
+    return;
+  } catch (e) { g.err = (e && e.message) || "Could not read those emails."; }
+  g.busy = false; g.status = ""; renderMain();
 }
 
 function importCSV(text) {
@@ -106,6 +150,7 @@ document.addEventListener("click", function (e) {
   else if (a === "addCity") { var inp = document.querySelector('[data-cityin="' + id + '"]'), v2 = inp.value.trim(); if (!v2) return; var co = findTrip(S, id), nc = newCity(v2, co.cur, co.status === "visited" ? "completed" : "planning"); co.cities.push(nc); save(); openTrip(co.id, nc.id, sel.tab === "over" ? "itin" : sel.tab); }
   else if (a === "tab") { sel.tab = id; sel.form = false; renderMain(); }
   else if (a === "toggleForm") { sel.form = !sel.form; renderMain(); }
+  else if (a === "add" && f && sel.tab === "packing") { var pt = $("form").querySelector("[data-f=\"text\"]").value.trim(); if (!pt) return; f.c.packing.push({ id: uid(), text: pt }); sel.form = false; save(); renderMain(); }
   else if (a === "add" && f) {
     var tc = formCity(f); if (!tc) { toast("Add a destination first."); return; }
     var o = { id: uid() }; document.querySelectorAll("#form [data-f]").forEach(function (x) { if (x.dataset.f !== "__city") o[x.dataset.f] = x.value.trim(); });
@@ -123,7 +168,13 @@ document.addEventListener("click", function (e) {
     save(); renderMain();
   }
   else if (a === "tick" && ic) { ic.packing.forEach(function (x) { if (x.id === id) x.done = b.checked; }); save(); renderMain(); }
-  else if (a === "starter" && f && f.city) { STARTER.forEach(function (t) { f.city.packing.push({ id: uid(), text: t }); }); save(); renderMain(); }
+  else if (a === "starter" && f) { STARTER.forEach(function (t) { f.c.packing.push({ id: uid(), text: t }); }); save(); renderMain(); }
+  else if (a === "clearDates" && f) { f.c.start = ""; f.c.end = ""; save(); renderMain(); }
+  else if (a === "saveGmail") { var gv = $("gclient").value.trim(); if (!/\.apps\.googleusercontent\.com$/.test(gv)) { toast("That does not look like a Google client ID. It ends in .apps.googleusercontent.com"); return; } setClientId(gv); renderMain(); toast("Gmail is set up. Import from the Claude tab."); }
+  else if (a === "clearGmail") { setClientId(""); ui.gmail.list = null; renderMain(); toast("Gmail client ID removed."); }
+  else if (a === "gmailFind") { gmailFind(); }
+  else if (a === "gmailPick") { ui.gmail.picked[id] = b.checked; renderMain(); }
+  else if (a === "gmailSend") { gmailSend(); }
   else if (a === "suggestPack") { suggestPack(); }
   else if (a === "importPick") { if (!f || !f.city) { toast("Choose a destination first, then import."); return; } $("csv").click(); }
   else if (a === "pcat") { sel.pcat = id; renderMain(); }
@@ -172,6 +223,14 @@ document.addEventListener("change", function (e) {
   else if (t.dataset && t.dataset.spent && ic) { ic[t.dataset.list].forEach(function (x) { if (x.id === t.dataset.spent) x.spent = t.value; }); save(); renderMain(); }
   else if (t.dataset && t.dataset.cur && f) { f.c.cur = t.value.trim().toUpperCase().slice(0, 4) || "USD"; save(); renderMain(); }
   else if (t.dataset && t.dataset.tb && f) { f.c.tbudget = t.value; save(); renderMain(); }
+  else if (t.dataset && t.dataset.tdate && f) {
+    var r0 = tripRange(f.c); if (!f.c.start && !f.c.end && r0) { f.c.start = r0.start; f.c.end = r0.end; }
+    f.c[t.dataset.tdate] = t.value;
+    if (f.c.start && f.c.end && f.c.end < f.c.start) { if (t.dataset.tdate === "start") f.c.end = f.c.start; else f.c.start = f.c.end; }
+    save(); renderTree(); renderMain();
+  }
+  else if (t.dataset && t.dataset.home) { S.home = t.value.trim(); save(); toast(S.home ? "Home set to " + S.home + "." : "Home cleared."); }
+  else if (t.id === "gmonths") { ui.gmail.months = t.value; }
   else if (t.dataset && t.dataset.cyear) { S.countries.forEach(function (c) { if (c.id === t.dataset.cyear) c.year = t.value.trim(); }); save(); renderTree(); }
   else if (t.dataset && t.dataset.cnote) { S.countries.forEach(function (c) { if (c.id === t.dataset.cnote) c.note = t.value.trim(); }); save(); }
 });

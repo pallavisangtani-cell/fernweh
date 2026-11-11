@@ -33,7 +33,19 @@ export function fix(S) {
       c.tbudget = any ? String(sum) : "";
     }
     if (!c.cur) c.cur = (c.cities[0] && c.cities[0].cur) || "USD";
+    if (c.start == null) c.start = "";
+    if (c.end == null) c.end = "";
+    // Packing is trip-level: one list per trip. Older saves kept a list per destination.
+    if (!Array.isArray(c.packing)) {
+      var seen = {};
+      c.packing = [];
+      c.cities.forEach(function (ci) {
+        ci.packing.forEach(function (p) { var k = String(p.text || "").toLowerCase(); if (seen[k]) return; seen[k] = 1; c.packing.push(p); });
+        ci.packing = [];
+      });
+    }
   });
+  if (S.home == null) S.home = "";
   return S;
 }
 
@@ -42,7 +54,7 @@ export function findTrip(S, id) {
 }
 
 export function newTrip(name, status, cur) {
-  return { id: uid(), name: name, status: status || "planned", year: "", note: "", tbudget: "", cur: cur || "USD", cities: [] };
+  return { id: uid(), name: name, status: status || "planned", year: "", note: "", tbudget: "", cur: cur || "USD", start: "", end: "", packing: [], cities: [] };
 }
 
 /** Totals for a set of destinations, in the same shape as totals(). */
@@ -111,8 +123,13 @@ export function groupByDay(list) {
 /* ---------- Dates and routes for the travel-style cards ---------- */
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Earliest and latest ISO date across the transport and stays of one destination, or a whole trip (anything with .cities). */
+/**
+ * Dates of a destination, or of a whole trip (anything with .cities). Dates set by hand (start/end) win;
+ * otherwise the earliest and latest transport and stay dates.
+ */
 export function tripRange(x) {
+  var st = ISO.test(x.start || "") ? x.start : "", en = ISO.test(x.end || "") ? x.end : "";
+  if (st || en) { st = st || en; en = en || st; return st <= en ? { start: st, end: en } : { start: en, end: st }; }
   var ds = [];
   (x.cities || [x]).forEach(function (city) {
     city.trans.forEach(function (t) { ds.push(t.date); });
@@ -165,13 +182,16 @@ export function mergeJournal(S, d) {
   d.countries.forEach(function (tc) {
     var co = S.countries.filter(function (c) { return c.name.toLowerCase() === String(tc.name).toLowerCase(); })[0];
     if (!co) {
-      S.countries.push(tc); add.trips++; add.destinations += tc.cities.length;
+      S.countries.push(tc); add.trips++; add.destinations += tc.cities.length; add.items += tc.packing.length;
       tc.cities.forEach(function (ci) { LISTS.forEach(function (k) { add.items += ci[k].length; }); });
       return;
     }
     if (tc.status === "visited") co.status = "visited";
     if (!co.year && tc.year) co.year = tc.year;
     if (!co.tbudget && tc.tbudget) { co.tbudget = tc.tbudget; co.cur = tc.cur; }
+    if (!co.start && !co.end && (tc.start || tc.end)) { co.start = tc.start; co.end = tc.end; }
+    var pids = {}; co.packing.forEach(function (x) { pids[x.id] = 1; });
+    tc.packing.forEach(function (x) { if (x.id && pids[x.id]) return; if (!x.id) x.id = uid(); co.packing.push(x); add.items++; });
     tc.cities.forEach(function (tci) {
       var ci = co.cities.filter(function (c) { return c.name.toLowerCase() === String(tci.name).toLowerCase(); })[0];
       if (!ci) { co.cities.push(tci); add.destinations++; LISTS.forEach(function (k) { add.items += tci[k].length; }); return; }

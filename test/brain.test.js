@@ -214,3 +214,22 @@ describe("buildPrompt", () => {
     assert.match(buildPrompt("x", null, true), /Current destination in the journal: none/);
   });
 });
+
+import { packPrompt, PACK_SCHEMA } from "../src/brain.js";
+describe("home and packing prompts", () => {
+  test("the home city goes into the routing rule", () => {
+    const p = buildPrompt("x", null, false, 2026, "Dubai");
+    assert.match(p, /ends at the traveller home \(Dubai\), which belongs to the destination it departs from/);
+    assert.match(p, /Never create a destination for the traveller home/);
+    assert.match(buildPrompt("x", null, false, 2026), /\(the origin of the first flight\)/);
+  });
+  test("packPrompt carries weather, plans and dining", () => {
+    const p = packPrompt({ trip: "Germany 2026", home: "Dubai", range: { start: "2026-12-01", end: "2026-12-06" }, have: ["Scarf"],
+      dests: [{ name: "Düsseldorf", weather: "Usually 2–7°C, rain on 4 of 6 days", activities: ["Christmas market"], dining: ["Im Schiffchen (Fine dining, 1 star)"] }, { name: "Frankfurt", weather: "", activities: [], dining: [] }] });
+    assert.match(p, /Germany 2026, 2026-12-01 to 2026-12-06\. Travelling from Dubai\./);
+    assert.match(p, /- Düsseldorf: Usually 2–7°C, rain on 4 of 6 days\. Plans: Christmas market\. Dining: Im Schiffchen/);
+    assert.match(p, /- Frankfurt: weather unknown, use the usual climate for the dates\./);
+    assert.match(p, /Already packed or on the list: Scarf\./);
+    assert.deepEqual(PACK_SCHEMA.properties.items.items.required, ["text", "cat", "why"]);
+  });
+});

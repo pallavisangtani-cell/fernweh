@@ -15,7 +15,7 @@ export function norm(o, keys) {
   return x;
 }
 
-export function buildPrompt(text, cur, done, year) {
+export function buildPrompt(text, cur, done, year, home) {
   year = year || new Date().getFullYear();
   return 'You organise travel notes into JSON. Return one JSON object with these keys: country (string), city (string), currency (3-letter code for the money in the text, or empty), '
     + 'itin (array of activities: {city, country, day: number, time: 24h HH:MM or empty, text, via: provider or venue, cost: number as string, spent: number as string, status, booked}), '
@@ -29,7 +29,7 @@ export function buildPrompt(text, cur, done, year) {
     + 'If the text is a bank or card SMS alert, add exactly one budget item with label = merchant, cat = Spending, cost and spent = the amount. '
     + 'Use empty strings or empty arrays when something is not in the text. Never invent details. '
     + (done ? 'The text records trips that already happened. If a date has no year in the text, leave the date empty rather than guessing a year. ' : 'If dates have no year assume ' + year + '. ')
-    + 'Number activity days from 1 in order within each trip. The text may cover several destinations or trips. Give EVERY item in itin, trans, stays, places and budget its own "city" (destination) and "country" (trip). An item belongs to the destination where it happens: a hotel or activity to its own destination; a flight or train to its destination, EXCEPT the final leg that ends at the traveller home (the origin of the first flight), which belongs to the destination it departs from. Example: DXB to DUS belongs to Dusseldorf, DUS to FRA belongs to Frankfurt, FRA to DXB (going home) belongs to Frankfurt. Copy flight numbers and booking reference codes exactly as written in the text and never drop them. '
+    + 'Number activity days from 1 in order within each trip. The text may cover several destinations or trips. Give EVERY item in itin, trans, stays, places and budget its own "city" (destination) and "country" (trip). An item belongs to the destination where it happens: a hotel or activity to its own destination; a flight or train to its destination, EXCEPT the final leg that ends at the traveller home' + (home ? ' (' + home + ')' : ' (the origin of the first flight)') + ', which belongs to the destination it departs from. Never create a destination for the traveller home. Example: DXB to DUS belongs to Dusseldorf, DUS to FRA belongs to Frankfurt, FRA to DXB (going home) belongs to Frankfurt. Copy flight numbers and booking reference codes exactly as written in the text and never drop them. '
     + 'Current destination in the journal: ' + (cur ? (cur.city ? cur.city.name + ', ' : '(none chosen) in trip ') + cur.c.name : 'none') + '. If the text names no destination, use the current one.\n\nTEXT:\n' + text;
 }
 
@@ -180,14 +180,25 @@ export const BRAIN_SCHEMA = {
   additionalProperties: false
 };
 
+export const PACK_CATS = ["Clothes", "Shoes", "Toiletries", "Health", "Tech", "Documents", "Other"];
+
 export const PACK_SCHEMA = {
   type: "object",
-  properties: { items: { type: "array", items: { type: "string" } } },
+  properties: { items: { type: "array", items: { type: "object", properties: { text: { type: "string" }, cat: { type: "string", enum: PACK_CATS }, why: { type: "string" } }, required: ["text", "cat", "why"], additionalProperties: false } } },
   required: ["items"],
   additionalProperties: false
 };
 
-export function packPrompt(f, have) {
-  var d = f.city.stays.map(function (s) { return s.checkin; }).filter(Boolean).sort()[0] || "";
-  return "Suggest 12 practical items to pack for a trip to " + f.city.name + ", " + f.c.name + (d ? " around " + d : "") + ". Items already on the list: " + (have || "none") + ". Give short item names only.";
+/**
+ * ctx: {trip, home, range: {start, end} or null, dests: [{name, weather, activities: [], dining: []}], have: [texts]}
+ */
+export function packPrompt(ctx) {
+  var lines = ["Suggest what to pack for this trip. Be specific to the weather and plans below, skip generic items the traveller would never forget, and do not repeat items already on the list.",
+    "Give 10 to 18 items. For each: a short item name, a category, and a reason of a few words that points to the weather or a plan (for example \"Rain on 3 of 6 days in Düsseldorf\").",
+    "Trip: " + ctx.trip + (ctx.range ? ", " + ctx.range.start + " to " + ctx.range.end : "") + (ctx.home ? ". Travelling from " + ctx.home : "") + "."];
+  ctx.dests.forEach(function (d) {
+    lines.push("- " + d.name + ": " + (d.weather || "weather unknown, use the usual climate for the dates") + (d.activities.length ? ". Plans: " + d.activities.slice(0, 12).join("; ") : "") + (d.dining.length ? ". Dining: " + d.dining.slice(0, 8).join("; ") : "") + ".");
+  });
+  lines.push("Already packed or on the list: " + (ctx.have.length ? ctx.have.join(", ") : "nothing yet") + ".");
+  return lines.join("\n");
 }

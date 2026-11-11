@@ -5,6 +5,9 @@ import { filterFood, findCity, findTrip, totalsOf, sortKey, title, groupByDay, t
 import { shareItems, catsOf, tripShare } from "../share.js";
 import { citiesOf } from "../brain.js";
 import { getApiKey, MODEL } from "../platform.js";
+import { weatherFor, weatherText } from "../weather.js";
+import { getClientId } from "../gmail.js";
+import { PACK_CATS } from "../brain.js";
 import { S, sel, brain, shareOpt, ui } from "../state.js";
 import { icon, coverStyle } from "./icons.js";
 
@@ -141,6 +144,29 @@ function actHtml(it, cid) {
   return '<div class="act"><div class="cardhead" style="display:flex;justify-content:space-between;gap:10px"><div>' + (it.time ? '<div class="tm">' + esc(it.time) + '</div>' : '') + '<b>' + esc(it.text) + '</b></div>' + del("itin", it, cid) + '</div>' + badges("itin", it, cid) + moneyHtml("itin", it, cid) + '</div>';
 }
 
+/* ---------- Weather ---------- */
+/** Dates used for a destination's weather: its own bookings, else the trip's dates. */
+export function destRange(co, ci) { return tripRange(ci) || tripRange(co); }
+export function weatherKey(ci, r) { return ci.name.toLowerCase() + "|" + r.start + "|" + r.end; }
+function wxIcon(w) { return !w ? "sun" : w.wet * 3 >= w.days ? "rain" : w.hi <= 12 ? "thermo" : "sun"; }
+function wxCard(co, ci) {
+  var r = destRange(co, ci);
+  if (!r) return '<div class="wx"><span class="ticon">' + icon("cal") + '</span><div><b>' + esc(ci.name) + '</b><div class="meta">Add trip dates to see the expected weather.</div></div></div>';
+  var key = weatherKey(ci, r), st = ui.weather[key];
+  if (!st) {
+    st = ui.weather[key] = { state: "loading" };
+    weatherFor(ci.name, r, todayIso()).then(function (w) { ui.weather[key] = { state: "ok", w: w }; renderMain(); }, function (e) { ui.weather[key] = { state: "err", msg: (e && e.message) || "Weather unavailable." }; renderMain(); });
+  }
+  var w = st.w;
+  return '<div class="wx"><span class="ticon' + (w && w.hi >= 28 ? ' acc' : '') + '">' + icon(wxIcon(w)) + '</span><div style="min-width:0"><b>' + esc(ci.name) + '</b><span class="meta"> · ' + esc(rangeText(r)) + '</span>'
+    + (st.state === "ok" ? '<div class="wxline">' + esc(weatherText(w)) + '</div>' + (w.kind === "typical" ? '<div class="meta">Based on the same dates last year. The forecast appears 16 days before.</div>' : '')
+      : st.state === "err" ? '<div class="meta">Weather unavailable: ' + esc(st.msg) + '</div>' : '<div class="meta">Checking the weather…</div>') + '</div></div>';
+}
+function wxPanel(co, cities) {
+  if (!cities.length) return "";
+  return '<div class="card wxpanel"><h3 style="font:500 1.1rem var(--display);margin-bottom:4px">Expected weather</h3>' + cities.map(function (ci) { return wxCard(co, ci); }).join("") + '</div>';
+}
+
 const KIND_ICON = { itin: "cal", trans: "Flight", stays: "Bed" };
 function overHtml(co, cities) {
   var n = { c: 0, t: 0, b: 0, u: 0, all: 0 }, need = [], car = {}, T = totalsOf(cities), many = cities.length > 1;
@@ -154,7 +180,7 @@ function overHtml(co, cities) {
     });
   });
   var pct = n.all ? Math.round(n.b / n.all * 100) : 0, carriers = Object.keys(car);
-  var h = '<div class="overview"><div class="card ov-card"><div class="ring" style="--p:' + pct + '"><b>' + pct + '%</b></div><div><div class="big">' + n.b + ' <span class="meta">of ' + n.all + '</span></div><div class="meta">booked</div></div></div>';
+  var h = wxPanel(co, cities) + '<div class="overview" style="margin-top:14px"><div class="card ov-card"><div class="ring" style="--p:' + pct + '"><b>' + pct + '%</b></div><div><div class="big">' + n.b + ' <span class="meta">of ' + n.all + '</span></div><div class="meta">booked</div></div></div>';
   h += '<div class="card"><div class="meta">Confirmation</div><div style="display:flex;gap:22px;margin-top:4px"><div><div class="ov-card big" style="color:var(--ok)">' + n.c + '</div><div class="meta">Confirmed</div></div><div><div class="ov-card big" style="color:var(--warn)">' + n.t + '</div><div class="meta">Tentative</div></div></div></div>';
   h += '<div class="card"><div class="meta">Carriers</div><div style="font-weight:600;margin-top:8px">' + (carriers.length ? esc(carriers.join(", ")) : 'None added yet') + '</div></div>';
   h += '<div class="card"><div class="meta">Still to book</div><div class="big" style="font:500 1.7rem var(--display);color:' + (n.u ? 'var(--bad)' : 'var(--ok)') + '">' + n.u + '</div></div></div>';
@@ -192,6 +218,25 @@ function listBody(k, ci, list) {
   return '<div class="grid g2">' + list.map(function (it) { return one(it, cid); }).join("") + '</div>';
 }
 
+function packItem(it, tid) {
+  return '<div class="pk' + (it.done ? ' done' : '') + '"><input type="checkbox" data-act="tick" data-id="' + it.id + '" data-cid="' + tid + '"' + (it.done ? ' checked' : '') + ' aria-label="Packed"><span>' + esc(it.text) + (it.why ? '<small>' + esc(it.why) + '</small>' : '') + '</span>' + del("packing", it, tid) + '</div>';
+}
+function packingHtml(co) {
+  var tid = "trip:" + co.id, list = co.packing, done = list.filter(function (x) { return x.done; }).length;
+  var h = wxPanel(co, co.cities);
+  h += '<div class="head" style="margin-top:18px"><h2>Packing</h2><div class="acts"><button class="btn sm acc" data-act="suggestPack"' + (ui.packBusy ? ' disabled' : '') + '>' + icon("sparkle") + (ui.packBusy ? 'Claude is thinking…' : 'Smart suggestions') + '</button>' + (list.length ? '' : '<button class="btn sm" data-act="starter">Starter list</button>') + '<button class="btn sm pri" data-act="toggleForm">' + (sel.form ? icon("x") + 'Close' : icon("plus") + 'Item') + '</button></div></div>';
+  h += '<p class="meta" style="margin:-6px 0 12px">One list for the whole trip. Smart suggestions use the weather, your plans and your restaurant bookings.</p>';
+  if (sel.form) h += '<div class="card form"><div class="row" id="form" style="margin:0">' + TABS.packing.fields.map(fieldHtml).join("") + '<button class="btn pri" data-act="add">Save</button></div></div>';
+  if (!list.length) return h + '<p class="empty">Nothing on the list yet.</p>';
+  var grouped = list.some(function (x) { return x.cat; });
+  if (!grouped) h += list.map(function (it) { return packItem(it, tid); }).join("");
+  else PACK_CATS.forEach(function (c) {
+    var xs = list.filter(function (x) { return (PACK_CATS.indexOf(x.cat) >= 0 ? x.cat : "Other") === c; });
+    if (xs.length) h += '<div class="pkcat">' + c + '</div>' + xs.map(function (it) { return packItem(it, tid); }).join("");
+  });
+  return h + '<p class="meta" style="margin-top:10px">' + done + ' of ' + list.length + ' packed</p>';
+}
+
 const TAB_ICON = { over: "grid", itin: "cal", trans: "Flight", stays: "Bed", food: "fork", places: "pin", budget: "wallet", packing: "bag", notes: "note" };
 function tabHtml(co, cities) {
   var k = sel.tab, Tb = TABS[k], h = "", many = cities.length > 1;
@@ -200,9 +245,9 @@ function tabHtml(co, cities) {
   if (k === "notes") {
     return cities.map(function (ci) { return (many ? '<div class="section" style="margin-top:18px"><h2 style="font-size:1.1rem">' + esc(ci.name) + '</h2></div>' : '') + '<textarea data-notes="' + ci.id + '" aria-label="Notes for ' + esc(ci.name) + '" style="min-height:' + (many ? 160 : 320) + 'px" placeholder="Neighbourhoods, tips, transport, food to try, things to avoid…">' + esc(ci.notes) + '</textarea>'; }).join("");
   }
+  if (k === "packing") return packingHtml(co);
   h += '<div class="head"><h2>' + Tb.label + '</h2><div class="acts">';
   if (k === "places") h += '<button class="btn sm" data-act="importPick">' + icon("upload") + 'Import Maps CSV</button><input type="file" id="csv" accept=".csv,text/csv" hidden>';
-  if (k === "packing" && !many) h += '<button class="btn sm" data-act="suggestPack"' + (ui.packBusy ? ' disabled' : '') + '>' + icon("sparkle") + (ui.packBusy ? 'Thinking…' : 'Suggest with Claude') + '</button>' + (cities[0].packing.length ? '' : '<button class="btn sm" data-act="starter">Starter list</button>');
   h += '<button class="btn sm pri" data-act="toggleForm">' + (sel.form ? icon("x") + 'Close' : icon("plus") + Tb.add.replace(/^Add /, '').replace(/^./, function (c) { return c.toUpperCase(); })) + '</button></div></div>';
   if (sel.form) {
     var pick = many ? '<label class="fld"><span>Destination</span><select data-f="__city" aria-label="Destination">' + cities.map(function (ci) { return '<option value="' + ci.id + '">' + esc(ci.name) + '</option>'; }).join("") + '</select></label>' : '';
@@ -236,7 +281,6 @@ function tabHtml(co, cities) {
     if (many) h += '<div class="dest-head"><i style="' + coverStyle(x.ci.name) + '"></i><b>' + esc(x.ci.name) + '</b><span class="meta">' + x.list.length + '</span></div>';
     h += listBody(k, x.ci, x.list);
   });
-  if (k === "packing") { var pk = [].concat.apply([], shown.map(function (x) { return x.list; })); h += '<p class="meta" style="margin-top:8px">' + pk.filter(function (x) { return x.done; }).length + ' of ' + pk.length + ' packed</p>'; }
   return h;
 }
 
@@ -250,6 +294,8 @@ function tripHtml(co) {
   var h = '<section class="hero cover" style="' + coverStyle(co.name) + '"><div class="bar"><button class="back" data-act="home" aria-label="Back to trips">' + icon("back") + '</button><span class="pill glass">' + (done ? icon("check") + 'Completed' : 'Planning') + '</span></div>';
   h += '<div><div class="co">' + esc(co.cities.map(function (c) { return c.name; }).join(" · ") || "Trip") + '</div><h1>' + esc(co.name) + '</h1><div class="when">' + (r ? '<span class="pill glass">' + icon("cal") + esc(rangeText(r)) + '</span>' : '') + (n ? '<span class="pill glass">' + n + (n === 1 ? ' night' : ' nights') + '</span>' : '') + (cd ? '<span class="pill glass">' + esc(cd) + '</span>' : '') + '</div></div>';
   h += '<div class="acts"><button class="btn sm" data-act="toggleDone">' + (done ? 'Reopen trip' : icon("check") + 'Mark trip completed') + '</button><button class="btn sm light" data-act="share">' + icon("share") + 'Share trip</button></div></section>';
+  var auto = !co.start && !co.end && r;
+  h += '<div class="card dates"><span class="ticon">' + icon("cal") + '</span><label class="fld">From<input type="date" data-tdate="start" value="' + esc(co.start || (auto ? r.start : "")) + '"></label><label class="fld">To<input type="date" data-tdate="end" value="' + esc(co.end || (auto ? r.end : "")) + '"></label><span class="meta">' + (auto ? 'From your bookings' : co.start || co.end ? '<button class="btn sm ghost" data-act="clearDates">Use booking dates</button>' : 'Set the trip dates') + '</span></div>';
   h += '<div class="budget"><div class="stat"><span>Trip budget</span><div class="cur"><input id="tb" data-tb="1" type="number" inputmode="decimal" min="0" placeholder="Set" value="' + esc(co.tbudget) + '" aria-label="Trip budget in ' + esc(CUR) + '"></div><div class="cur" style="margin-top:6px"><span class="meta">Currency</span>' + curInput(co) + '</div></div><div class="stat"><span>Planned</span><b>' + esc(fmt(T.all.p)) + '</b></div><div class="stat"><span>Spent</span><b>' + esc(fmt(T.all.s)) + '</b></div><div class="stat"><span>' + (left < 0 ? 'Over by' : (bud ? 'Left of budget' : 'Left of plan')) + '</span><b style="color:' + (left < 0 ? 'var(--bad)' : 'var(--ink)') + '">' + esc(fmt(Math.abs(left))) + '</b></div></div>';
   h += '<div class="meter bmeter' + (left < 0 ? ' over' : '') + '" role="img" aria-label="' + Math.round(pct) + '% of ' + (bud ? 'trip budget' : 'planned costs') + ' spent"><i style="width:' + pct + '%"></i></div>';
   if (!bud) h += '<p class="note">Set a trip budget to track spending across all destinations. Until then, spending is compared with your planned costs.</p>';
@@ -262,7 +308,7 @@ function tripHtml(co) {
   if (city) h += '<div class="dest-bar"><span>Showing <b>' + esc(city.name) + '</b></span>' + (sel.confirmCity === city.id ? '<span class="acts"><button class="btn sm" style="color:var(--bad)" data-act="delCityYes" data-id="' + city.id + '">Remove ' + esc(city.name) + '</button><button class="btn sm ghost" data-act="delCityNo">Cancel</button></span>' : '<button class="btn sm ghost" style="color:var(--mute)" data-act="delCity" data-id="' + city.id + '">' + icon("x") + 'Remove destination</button>') + '</div>';
   h += '<div class="tabs" role="tablist">';
   Object.keys(TABS).forEach(function (k) {
-    var cnt = 0; if (k !== "over" && k !== "notes") cities.forEach(function (ci) { cnt += ci[k].length; });
+    var cnt = 0; if (k === "packing") cnt = co.packing.length; else if (k !== "over" && k !== "notes") cities.forEach(function (ci) { cnt += ci[k].length; });
     h += '<button class="tab' + (k === sel.tab ? ' on' : '') + '" role="tab" aria-selected="' + (k === sel.tab) + '" data-act="tab" data-id="' + k + '">' + icon(TAB_ICON[k]) + TABS[k].label + (cnt ? '<span class="n">' + cnt + '</span>' : '') + '</button>';
   });
   h += '</div>' + tabHtml(co, cities);
@@ -312,9 +358,22 @@ function worldHtml() {
 function settingsHtml() {
   var has = !!getApiKey();
   var h = '<div class="eyebrow">Settings</div><h1 class="page">Settings</h1>';
+  h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("home") + '</span><div><h3 style="font:500 1.15rem var(--display)">Home</h3><div class="meta">Where your trips start and end</div></div></div><div class="row"><label class="fld g">Home city<input data-home="1" value="' + esc(S.home) + '" placeholder="e.g. Dubai"></label></div><p class="meta">Claude files a flight back home under the city you leave from, and never makes your home a destination.</p></div>';
   h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("key") + '</span><div><h3 style="font:500 1.15rem var(--display)">Claude</h3><div class="meta">' + (has ? 'Connected. Model: ' + esc(MODEL) : 'Not connected') + '</div></div></div>';
   h += '<p class="lede" style="margin-top:12px">Claude powers the Brain Box and packing suggestions. Create an API key in the Claude Console at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com</a> and paste it here. The key is stored only on this device and is never included in backups. API use is billed to your Anthropic account, usually a few cents per paste.</p>';
   h += '<div class="row"><label class="fld g">API key<input id="apikey" type="password" autocomplete="off" spellcheck="false" placeholder="' + (has ? 'Saved. Paste a new key to replace it' : 'sk-ant-…') + '"></label><button class="btn pri" data-act="saveKey">Save</button>' + (has ? '<button class="btn" data-act="testKey"' + (ui.keyBusy ? ' disabled' : '') + '>' + (ui.keyBusy ? 'Checking…' : 'Test') + '</button><button class="btn ghost" style="color:var(--bad)" data-act="clearKey">Remove</button>' : '') + '</div></div>';
+  var gid = getClientId();
+  h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("mail") + '</span><div><h3 style="font:500 1.15rem var(--display)">Gmail</h3><div class="meta">' + (gid ? 'Set up. Import from the Claude tab.' : 'Not set up') + '</div></div></div>'
+    + '<p class="lede" style="margin-top:12px">Lets Fernweh read booking emails, read-only, so Claude can add them. Emails go from Gmail to this device and to Claude; nothing is stored except what you add. This needs a free Google client ID, set up once:</p>'
+    + '<details class="steps"><summary>How to get a Google client ID (about 10 minutes)</summary><ol>'
+    + '<li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud Console</a> and create a project called Fernweh.</li>'
+    + '<li>In <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noopener">APIs &amp; Services → Library</a>, enable the <b>Gmail API</b>.</li>'
+    + '<li>Open <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Google Auth Platform</a>, click Get started, name the app Fernweh, choose <b>External</b>, and enter your email.</li>'
+    + '<li>Under <b>Audience</b>, add your own Gmail address as a <b>test user</b>.</li>'
+    + '<li>Under <b>Clients</b>, create a client of type <b>Web application</b>. Under Authorized JavaScript origins, add <code>' + esc(location.origin) + '</code>.</li>'
+    + '<li>Copy the <b>Client ID</b> (it ends in .apps.googleusercontent.com) and paste it below.</li></ol>'
+    + '<p class="meta">Google will warn that the app is unverified. That is expected for an app only you use: choose Continue.</p></details>'
+    + '<div class="row"><label class="fld g">Google client ID<input id="gclient" value="' + esc(gid) + '" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label><button class="btn pri" data-act="saveGmail">Save</button>' + (gid ? '<button class="btn ghost" style="color:var(--bad)" data-act="clearGmail">Remove</button>' : '') + '</div></div>';
   h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("plus") + '</span><div><h3 style="font:500 1.15rem var(--display)">Add trips from a file</h3><div class="meta">Adds to your journal. Nothing is replaced.</div></div></div><p class="lede" style="margin-top:12px">Use this for a Fernweh file of past trips. Trips and destinations with the same name are combined, and adding the same file twice does not duplicate anything.</p><div class="row"><button class="btn pri" data-act="mergePick">' + icon("upload") + 'Choose file</button><input type="file" id="mergeFile" accept=".json,application/json" hidden></div></div>';
   h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon acc">' + icon("upload") + '</span><div><h3 style="font:500 1.15rem var(--display)">Backup and restore</h3><div class="meta">Your journal is saved on this device</div></div></div><p class="lede" style="margin-top:12px">Download a copy now and then. To move your trips to another device, copy this text and paste it into Restore there.</p><textarea id="bk" aria-label="Backup data" style="margin-top:12px;min-height:140px">' + esc(JSON.stringify(S)) + '</textarea><div class="row"><button class="btn pri" data-act="dlBackup">Download backup</button><button class="btn" data-act="restore">Restore from text</button></div></div>';
   return h;
@@ -337,10 +396,26 @@ function shareView(co) {
   return h + '</div>';
 }
 
+/* ---------- Gmail import ---------- */
+function gmailHtml() {
+  var g = ui.gmail, h = '<div class="panel gmail"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("mail") + '</span><div style="flex:1"><h3 style="font:500 1.15rem var(--display)">Import from Gmail</h3><div class="meta">Find booking confirmations and let Claude add them</div></div></div>';
+  if (!getClientId()) return h + '<p class="meta" style="margin-top:10px">Set up Gmail once in Settings first.</p><div class="row"><button class="btn sm" data-act="settings">Open Settings</button></div></div>';
+  h += '<div class="row"><label class="fld">Look back<select id="gmonths">' + [["1", "1 month"], ["3", "3 months"], ["6", "6 months"], ["12", "1 year"], ["36", "3 years"]].map(function (o) { return '<option value="' + o[0] + '"' + (g.months === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join("") + '</select></label><button class="btn pri" data-act="gmailFind"' + (g.busy ? ' disabled' : '') + '>' + icon("mail") + (g.busy ? esc(g.status || 'Working…') : 'Find booking emails') + '</button></div>';
+  if (g.err) h += '<p class="err">' + esc(g.err) + '</p>';
+  if (g.list) {
+    if (!g.list.length) return h + '<p class="empty">No booking emails found in that period.</p></div>';
+    var n = Object.keys(g.picked).filter(function (k) { return g.picked[k]; }).length;
+    h += '<div class="mails">' + g.list.map(function (m) { return '<label class="mail"><input type="checkbox" data-act="gmailPick" data-id="' + esc(m.id) + '"' + (g.picked[m.id] ? ' checked' : '') + '><span><b>' + esc(m.subject) + '</b><small>' + esc(m.from) + ' · ' + esc(String(m.date).replace(/ [+-]\d{4}.*$/, "")) + '</small><small class="snip">' + esc(m.snippet) + '</small></span></label>'; }).join("") + '</div>';
+    h += '<div class="row"><button class="btn acc" data-act="gmailSend"' + (!n || g.busy || brain.busy ? ' disabled' : '') + '>' + icon("sparkle") + 'Send ' + n + (n === 1 ? ' email' : ' emails') + ' to Claude</button><span class="meta">Up to 15 at a time. You check everything before it is added.</span></div>';
+  }
+  return h + '</div>';
+}
+
 /* ---------- Brain Box (Claude) ---------- */
 function brainHtml() {
   var h = '<section class="claude-hero"><div class="eyebrow" style="color:rgba(255,255,255,.8)">Brain Box · Claude</div><h1>Paste it, Claude sorts it</h1><p>Paste plans, a booking email, a bank SMS or notes from an old trip, or upload a spreadsheet. Claude files everything under the right trip, destination and tab, and reads status, booking and provider from your text.</p></section>';
   if (!getApiKey()) h += '<div class="keynote">' + icon("key") + '<div><b>Connect Claude first.</b> Add your Claude API key in Settings. It stays on this device.<div style="margin-top:8px"><button class="btn sm pri" data-act="settings">Open Settings</button></div></div></div>';
+  h += gmailHtml();
   h += '<div class="chips" style="margin-top:16px">' + SAMPLES.map(function (s, i) { return '<button class="chip" data-act="sample" data-id="' + i + '">Try: ' + s[0] + '</button>'; }).join("") + '</div>';
   h += '<div class="panel" style="margin-top:6px"><textarea id="brainIn" aria-label="Plans or bookings" placeholder="e.g. Lisbon, Portugal 12–16 March. Emirates EK191 DXB to LIS, booked, 2,400. Hotel Avenida via Booking.com, conf. 88213, 540, paid. Day 2: Sintra day trip, not booked yet.">' + esc(brain.text) + '</textarea>';
   h += '<div class="row"><button class="btn sm" data-act="pickFile">' + icon("upload") + 'Upload a file</button><input type="file" id="brainFile" accept=".csv,.tsv,.txt,.md,.json,.eml,.xlsx,.xls,.docx" hidden><span class="meta">Excel, Word, CSV or text. PDFs: paste the text instead.</span></div>';
