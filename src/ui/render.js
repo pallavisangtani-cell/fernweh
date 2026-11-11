@@ -1,12 +1,13 @@
 // HTML for every screen, plus renderTree() (sidebar + tab bar) and renderMain().
-import { TABS, CATS, BOOKABLE, CURS, SAMPLES, FOOD_TYPES } from "../constants.js";
+import { TABS, CATS, BOOKABLE, CURS, SAMPLES, FOOD_TYPES, CUISINES } from "../constants.js";
 import { esc, fmt, setCur, getCur, planned, spentOf, mapsUrl } from "../util.js";
-import { filterFood, findCity, findTrip, totalsOf, sortKey, title, groupByDay, tripRange, countdown, todayIso, routeParts, nights } from "../model.js";
+import { filterFood, dateOfDay, reservations, findCity, findTrip, totalsOf, sortKey, title, groupByDay, tripRange, countdown, todayIso, routeParts, nights } from "../model.js";
 import { shareItems, catsOf, tripShare } from "../share.js";
 import { citiesOf } from "../brain.js";
 import { getApiKey, MODEL } from "../platform.js";
 import { weatherFor, weatherText } from "../weather.js";
 import { getClientId } from "../gmail.js";
+import { getMapsKey, pins, missingGeo, drawMap, KIND_STYLE, authFailed } from "../maps.js";
 import { PACK_CATS } from "../brain.js";
 import { S, sel, brain, shareOpt, ui } from "../state.js";
 import { icon, coverStyle } from "./icons.js";
@@ -97,6 +98,7 @@ function homeHtml() {
 function fieldHtml(f) {
   var st = f.grow ? "" : "width:" + (f.w || 140) + "px", inp;
   if (f.type === "select") inp = '<select data-f="' + f.k + '" aria-label="' + esc(f.ph) + '" style="' + st + '">' + f.opts.map(function (o) { return '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>'; }).join("") + '</select>';
+  else if (f.type === "list") inp = '<input data-f="' + f.k + '" list="dl-' + f.k + '" aria-label="' + esc(f.ph) + '" style="' + st + '"><datalist id="dl-' + f.k + '">' + CUISINES.map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join("") + '</datalist>';
   else inp = '<input data-f="' + f.k + '" type="' + (f.type || "text") + '" aria-label="' + esc(f.ph) + '" style="' + st + '">';
   return '<label class="fld' + (f.grow ? ' g' : '') + '">' + esc(f.ph) + inp + '</label>';
 }
@@ -119,10 +121,12 @@ function passHtml(it, cid) {
 }
 function stayHtml(it, cid) {
   var n = nights(it.checkin, it.checkout), dates = (it.checkin || it.checkout) ? niceDate(it.checkin, true) + " – " + niceDate(it.checkout, true) : "";
-  return '<div class="card item"><div class="cardhead"><div class="ttl"><span class="ticon">' + icon("Bed") + '</span><div><b>' + esc(it.name) + '</b>' + (n ? '<div class="nights">' + n + (n === 1 ? ' night' : ' nights') + '</div>' : '') + '<div class="meta">' + esc([dates, it.conf ? "Conf. " + it.conf : ""].filter(Boolean).join(" · ")) + '</div></div></div>' + del("stays", it, cid) + '</div>' + badges("stays", it, cid) + moneyHtml("stays", it, cid) + '</div>';
+  return '<div class="card item"><div class="cardhead"><div class="ttl"><span class="ticon">' + icon("Bed") + '</span><div><b>' + esc(it.name) + '</b>' + (n ? '<div class="nights">' + n + (n === 1 ? ' night' : ' nights') + '</div>' : '') + (it.area ? '<div class="meta">' + icon("pin") + ' ' + esc(it.area) + '</div>' : '') + '<div class="meta">' + esc([dates, it.conf ? "Conf. " + it.conf : ""].filter(Boolean).join(" · ")) + '</div></div></div>' + del("stays", it, cid) + '</div>' + badges("stays", it, cid) + moneyHtml("stays", it, cid) + '</div>';
 }
+/** Best Maps link for an item: its own link, the exact Google place once found, else a search. */
+function mapLink(it, city) { return /^https?:/i.test(it.link || "") ? it.link : (it.geo && it.geo.url) || mapsUrl(it.name, (it.area ? it.area + ", " : "") + city.name); }
 function placeHtml(it, city, cid) {
-  var u = /^https?:/i.test(it.link || "") ? it.link : mapsUrl(it.name, city.name);
+  var u = mapLink(it, city);
   return '<div class="card item place"><div class="cardhead"><div><div class="pcat">' + esc(it.cat || "Other") + '</div><b>' + esc(it.name) + '</b></div>' + del("places", it, cid) + '</div>' + (it.note ? '<div class="meta">' + esc(it.note) + '</div>' : '') + '<div class="go"><a class="btn sm" href="' + esc(u) + '" target="_blank" rel="noopener">' + icon("map") + 'Open in Maps</a></div></div>';
 }
 function michelinLabel(m) {
@@ -131,17 +135,21 @@ function michelinLabel(m) {
   return n ? new Array(n + 1).join("★") + " Michelin" : m;
 }
 function foodHtml(it, city, cid) {
-  var u = /^https?:/i.test(it.link || "") ? it.link : mapsUrl(it.name, city.name), v = it.status === "visited";
+  var u = mapLink(it, city), v = it.status === "visited";
   var awards = (it.michelin ? '<span class="pill mich">' + esc(michelinLabel(it.michelin)) + '</span>' : '') + (it.best50 === "yes" ? '<span class="pill b50">World\'s 50 Best</span>' : '');
-  return '<div class="card item place food"><div class="cardhead"><div><div class="pcat">' + esc(it.type && it.type !== "Other" ? it.type : "Restaurant") + '</div><b>' + esc(it.name) + '</b></div>' + del("food", it, cid) + '</div>'
-    + (awards ? '<div class="badges" style="margin-top:2px">' + awards + '</div>' : '') + (it.note ? '<div class="meta">' + esc(it.note) + '</div>' : '')
+  return '<div class="card item place food"><div class="cardhead"><div><div class="pcat">' + esc([it.cuisine, it.type && it.type !== "Other" ? it.type : ""].filter(Boolean).join(" · ") || "Restaurant") + '</div><b>' + esc(it.name) + '</b></div>' + del("food", it, cid) + '</div>'
+    + (awards ? '<div class="badges" style="margin-top:2px">' + awards + '</div>' : '')
+    + (it.bookDate ? '<div class="booked">' + icon("cal") + '<span>Table booked ' + esc(niceDate(it.bookDate, false)) + (it.bookTime ? ' at ' + esc(it.bookTime) : '') + (it.bookVia ? ' · via ' + esc(it.bookVia) : '') + '</span></div>' : it.bookVia ? '<div class="meta">Book via ' + esc(it.bookVia) + '</div>' : '')
+    + (it.recBy ? '<div class="meta">Recommended by ' + esc(it.recBy) + '</div>' : '') + (it.note ? '<div class="meta">' + esc(it.note) + '</div>' : '')
     + '<div class="go" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="pill ' + (v ? 'ok' : 'brand') + '" data-act="flip" data-k="visit" data-list="food" data-id="' + it.id + '" data-cid="' + cid + '" title="Tap to change">' + (v ? icon("check") + 'Visited' : 'Want to visit') + '</button><a class="btn sm" href="' + esc(u) + '" target="_blank" rel="noopener">' + icon("map") + 'Maps</a></div></div>';
 }
 function costHtml(it, cid) {
   return '<div class="card item"><div class="cardhead"><div class="ttl"><span class="ticon acc">' + icon("wallet") + '</span><div><b>' + esc(it.label) + '</b>' + (it.cat ? '<div class="meta">' + esc(it.cat) + '</div>' : '') + '</div></div>' + del("budget", it, cid) + '</div>' + moneyHtml("budget", it, cid) + '</div>';
 }
 function actHtml(it, cid) {
-  return '<div class="act"><div class="cardhead" style="display:flex;justify-content:space-between;gap:10px"><div>' + (it.time ? '<div class="tm">' + esc(it.time) + '</div>' : '') + '<b>' + esc(it.text) + '</b></div>' + del("itin", it, cid) + '</div>' + badges("itin", it, cid) + moneyHtml("itin", it, cid) + '</div>';
+  if (it._res) return '<div class="act res"><div class="tm">' + esc(it.time || "Booked") + '</div><b>' + icon("fork") + ' Table at ' + esc(it.text) + '</b><div class="meta">' + esc([it.food.cuisine, it.via ? "via " + it.via : ""].filter(Boolean).join(" · ")) + '</div><div class="badges"><button class="pill brand" data-act="tab" data-id="food">See in Restaurants</button></div></div>';
+  var link = /^https?:/i.test(it.link || "") ? '<a class="btn sm" style="margin-top:8px" href="' + esc(it.link) + '" target="_blank" rel="noopener">' + icon("share") + 'Open link</a>' : '';
+  return '<div class="act"><div class="cardhead" style="display:flex;justify-content:space-between;gap:10px"><div>' + (it.time ? '<div class="tm">' + esc(it.time) + '</div>' : '') + '<b>' + esc(it.text) + '</b></div>' + del("itin", it, cid) + '</div>' + link + badges("itin", it, cid) + moneyHtml("itin", it, cid) + '</div>';
 }
 
 /* ---------- Weather ---------- */
@@ -204,11 +212,23 @@ function curInput(co) {
 function catCounts(list) { var m = {}; list.forEach(function (x) { var c = x.cat || "Other"; m[c] = (m[c] || 0) + 1; }); return m; }
 
 /** One destination's items for list tab k (already filtered and sorted). */
-function listBody(k, ci, list) {
+function dayLabel(start, d) {
+  var iso = dateOfDay(start, d);
+  return iso ? new Date(iso + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "";
+}
+function listBody(k, ci, list, co) {
   var cid = ci.id, h = "";
   if (k === "itin") {
-    var days = groupByDay(list);
-    Object.keys(days).forEach(function (d) { var p = 0, s2 = 0; days[d].forEach(function (it) { p += planned(it); s2 += spentOf(it); }); h += '<div class="day"><div class="dayhead"><b>Day ' + esc(d) + '</b><span>' + esc(fmt(s2)) + ' of ' + esc(fmt(p)) + '</span></div>' + days[d].map(function (it) { return actHtml(it, cid); }).join("") + '</div>'; });
+    var start = (tripRange(co) || {}).start || "", days = groupByDay(list), keys = Object.keys(days);
+    // Numbered days in order, then anything without a day.
+    keys.sort(function (a, b) { var x = parseFloat(a), y = parseFloat(b); return (isNaN(x) ? 1e9 : x) - (isNaN(y) ? 1e9 : y); });
+    keys.forEach(function (d) {
+      var p = 0, s2 = 0, num = !isNaN(parseFloat(d)); days[d].forEach(function (it) { if (!it._res) { p += planned(it); s2 += spentOf(it); } });
+      var dl = num ? dayLabel(start, d) : "";
+      h += '<div class="day"><div class="dayhead"><div class="dd"><b>' + (num ? 'Day ' + esc(d) : 'No day set') + '</b>' + (dl ? '<span>' + esc(dl) + '</span>' : '') + '</div>'
+        + (num ? '<input class="dayplace" data-dayplace="' + esc(d) + '" value="' + esc(co.days[d] || "") + '" placeholder="Where to?" aria-label="Where you go on day ' + esc(d) + '">' : '') + (p || s2 ? '<span class="dsum">' + esc(fmt(s2)) + ' of ' + esc(fmt(p)) + '</span>' : '') + '</div>'
+        + days[d].map(function (it) { return actHtml(it, cid); }).join("") + '</div>';
+    });
     return h;
   }
   if (k === "packing") {
@@ -237,7 +257,32 @@ function packingHtml(co) {
   return h + '<p class="meta" style="margin-top:10px">' + done + ' of ' + list.length + ' packed</p>';
 }
 
-const TAB_ICON = { over: "grid", itin: "cal", trans: "Flight", stays: "Bed", food: "fork", places: "pin", budget: "wallet", packing: "bag", notes: "note" };
+const TAB_ICON = { over: "grid", map: "map", itin: "cal", trans: "Flight", stays: "Bed", food: "fork", places: "pin", budget: "wallet", packing: "bag", notes: "note" };
+/* ---------- Map (Google Maps) ---------- */
+function mapTabHtml(co, cities) {
+  var h = '<div class="head"><h2>Map</h2></div>';
+  if (!getMapsKey()) return h + '<div class="panel" style="margin-top:0"><p class="lede">See your stays, restaurants and places on Google Maps, with exact locations from Google. Add a Google Maps key in Settings first.</p><div class="row"><button class="btn sm pri" data-act="settings">Open Settings</button></div></div>';
+  var kinds = Object.keys(KIND_STYLE).filter(function (k) { return sel.mapKinds[k]; });
+  var all = missingGeo(cities), list = pins(cities, kinds), g = ui.geo;
+  h += '<div class="chips">' + Object.keys(KIND_STYLE).map(function (k) { var n = pins(cities, [k]).length; return '<button class="chip mapk' + (sel.mapKinds[k] ? ' on' : '') + '" data-act="mapKind" data-id="' + k + '"><i style="background:' + KIND_STYLE[k].color + '"></i>' + KIND_STYLE[k].label + ' ' + n + '</button>'; }).join("") + '</div>';
+  if (all.length || g.busy) h += '<div class="geo-note">' + icon("pin") + '<span>' + (g.busy ? esc(g.status) : all.length + (all.length === 1 ? ' item has' : ' items have') + ' no location yet.') + '</span>' + (g.busy ? '' : '<button class="btn sm pri" data-act="geoFind">Find with Google</button>') + '</div>';
+  if (g.err) h += '<p class="err">' + esc(g.err) + '</p>';
+  if (!list.length) return h + '<p class="empty">' + (pins(cities).length ? 'Nothing to show with these filters.' : 'No locations yet. Tap Find with Google to place your stays, restaurants and places.') + '</p>';
+  return h + '<div id="gmap" class="gmap" aria-label="Map"></div><p class="meta" style="margin-top:8px">Tap a pin for details and directions in Google Maps.</p>';
+}
+export function mapPopup(x) {
+  var it = x.item, sub = x.kind === "food" ? [it.cuisine, it.type !== "Other" ? it.type : "", michelinLabel(it.michelin)].filter(Boolean).join(" · ") : x.kind === "stays" ? (it.area || "Stay") : (it.cat || "Place");
+  var u = mapLink(it, x.city);
+  return '<div class="pop"><b>' + esc(it.name) + '</b><div>' + esc(sub) + '</div>' + (it.geo.addr ? '<div class="addr">' + esc(it.geo.addr) + '</div>' : '') + '<a href="' + esc(u) + '" target="_blank" rel="noopener">Open in Google Maps</a></div>';
+}
+function paintMap(co, cities) {
+  var el = document.getElementById("gmap"); if (!el) return;
+  var kinds = Object.keys(KIND_STYLE).filter(function (k) { return sel.mapKinds[k]; });
+  drawMap(el, pins(cities, kinds), mapPopup).then(function () {
+    setTimeout(function () { if (authFailed()) el.outerHTML = '<p class="err">Google did not accept the Maps key. Check it in Settings and that the Maps JavaScript API is enabled.</p>'; }, 1500);
+  }, function (e) { el.outerHTML = '<p class="err">' + esc((e && e.message) || 'Could not load the map.') + '</p>'; });
+}
+
 function tabHtml(co, cities) {
   var k = sel.tab, Tb = TABS[k], h = "", many = cities.length > 1;
   if (k === "over") return overHtml(co, cities);
@@ -246,6 +291,7 @@ function tabHtml(co, cities) {
     return cities.map(function (ci) { return (many ? '<div class="section" style="margin-top:18px"><h2 style="font-size:1.1rem">' + esc(ci.name) + '</h2></div>' : '') + '<textarea data-notes="' + ci.id + '" aria-label="Notes for ' + esc(ci.name) + '" style="min-height:' + (many ? 160 : 320) + 'px" placeholder="Neighbourhoods, tips, transport, food to try, things to avoid…">' + esc(ci.notes) + '</textarea>'; }).join("");
   }
   if (k === "packing") return packingHtml(co);
+  if (k === "map") return mapTabHtml(co, cities);
   h += '<div class="head"><h2>' + Tb.label + '</h2><div class="acts">';
   if (k === "places") h += '<button class="btn sm" data-act="importPick">' + icon("upload") + 'Import Maps CSV</button><input type="file" id="csv" accept=".csv,text/csv" hidden>';
   h += '<button class="btn sm pri" data-act="toggleForm">' + (sel.form ? icon("x") + 'Close' : icon("plus") + Tb.add.replace(/^Add /, '').replace(/^./, function (c) { return c.toUpperCase(); })) + '</button></div></div>';
@@ -271,15 +317,22 @@ function tabHtml(co, cities) {
       var order = FOOD_TYPES.filter(function (t) { return types[t]; });
       h += '<div class="chips"><button class="chip' + (sel.ftype === "All" ? ' on' : '') + '" data-act="ftype" data-id="All">All types</button>' + order.map(function (t) { return '<button class="chip' + (sel.ftype === t ? ' on' : '') + '" data-act="ftype" data-id="' + esc(t) + '">' + esc(t) + ' ' + types[t] + '</button>'; }).join("")
         + '<button class="chip award' + (sel.faward === "michelin" ? ' on' : '') + '" data-act="faward" data-id="michelin">★ Michelin</button><button class="chip award' + (sel.faward === "best50" ? ' on' : '') + '" data-act="faward" data-id="best50">World\'s 50 Best</button></div>';
-      lists.forEach(function (x) { x.list = filterFood(x.list, sel.fstat, sel.ftype, sel.faward); });
+      var cus = {}; allf.forEach(function (r) { var c = String(r.cuisine || "").trim(); if (c) { var key = c.toLowerCase(); cus[key] = cus[key] || { name: c, n: 0 }; cus[key].n++; } });
+      var cl = Object.keys(cus).sort(function (a, b) { return cus[b].n - cus[a].n || a.localeCompare(b); });
+      if (cl.length) h += '<div class="chips"><button class="chip' + (sel.fcuisine === "All" ? ' on' : '') + '" data-act="fcuisine" data-id="All">All cuisines</button>' + cl.map(function (key) { return '<button class="chip' + (sel.fcuisine.toLowerCase() === key ? ' on' : '') + '" data-act="fcuisine" data-id="' + esc(cus[key].name) + '">' + esc(cus[key].name) + ' ' + cus[key].n + '</button>'; }).join("") + '</div>';
+      lists.forEach(function (x) { x.list = filterFood(x.list, sel.fstat, sel.ftype, sel.faward, sel.fcuisine); });
       if (!lists.some(function (x) { return x.list.length; })) return h + '<p class="empty">No restaurants match these filters.</p>';
     }
+  }
+  if (k === "itin") {
+    var st0 = (tripRange(co) || {}).start || "";
+    lists.forEach(function (x) { x.list = x.list.concat(reservations(x.ci, st0)).sort(function (a, b) { return sortKey("itin", a, b); }); });
   }
   var shown = lists.filter(function (x) { return x.list.length; });
   if (!shown.length) return h + '<p class="empty">Nothing here yet. Add one, or paste a confirmation into Claude.</p>';
   shown.forEach(function (x) {
     if (many) h += '<div class="dest-head"><i style="' + coverStyle(x.ci.name) + '"></i><b>' + esc(x.ci.name) + '</b><span class="meta">' + x.list.length + '</span></div>';
-    h += listBody(k, x.ci, x.list);
+    h += listBody(k, x.ci, x.list, co);
   });
   return h;
 }
@@ -308,7 +361,7 @@ function tripHtml(co) {
   if (city) h += '<div class="dest-bar"><span>Showing <b>' + esc(city.name) + '</b></span>' + (sel.confirmCity === city.id ? '<span class="acts"><button class="btn sm" style="color:var(--bad)" data-act="delCityYes" data-id="' + city.id + '">Remove ' + esc(city.name) + '</button><button class="btn sm ghost" data-act="delCityNo">Cancel</button></span>' : '<button class="btn sm ghost" style="color:var(--mute)" data-act="delCity" data-id="' + city.id + '">' + icon("x") + 'Remove destination</button>') + '</div>';
   h += '<div class="tabs" role="tablist">';
   Object.keys(TABS).forEach(function (k) {
-    var cnt = 0; if (k === "packing") cnt = co.packing.length; else if (k !== "over" && k !== "notes") cities.forEach(function (ci) { cnt += ci[k].length; });
+    var cnt = 0; if (k === "packing") cnt = co.packing.length; else cities.forEach(function (ci) { if (Array.isArray(ci[k])) cnt += ci[k].length; });
     h += '<button class="tab' + (k === sel.tab ? ' on' : '') + '" role="tab" aria-selected="' + (k === sel.tab) + '" data-act="tab" data-id="' + k + '">' + icon(TAB_ICON[k]) + TABS[k].label + (cnt ? '<span class="n">' + cnt + '</span>' : '') + '</button>';
   });
   h += '</div>' + tabHtml(co, cities);
@@ -325,6 +378,7 @@ export function renderMain() {
   else if ((sel.view === "trip" || sel.view === "share") && co) { setCur(co.cur); h = sel.view === "share" ? shareView(co) : tripHtml(co); }
   else { sel.view = "home"; h = homeHtml(); }
   m.innerHTML = h;
+  if (sel.view === "trip" && sel.tab === "map" && co) { var cs = sel.city ? co.cities.filter(function (c) { return c.id === sel.city; }) : co.cities; paintMap(co, cs); }
   // Keep the selected tab and destination visible in their sideways-scrolling rows.
   m.querySelectorAll(".tab.on, .dest.on").forEach(function (on) {
     var row = on.parentElement;
@@ -362,18 +416,26 @@ function settingsHtml() {
   h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("key") + '</span><div><h3 style="font:500 1.15rem var(--display)">Claude</h3><div class="meta">' + (has ? 'Connected. Model: ' + esc(MODEL) : 'Not connected') + '</div></div></div>';
   h += '<p class="lede" style="margin-top:12px">Claude powers the Brain Box and packing suggestions. Create an API key in the Claude Console at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com</a> and paste it here. The key is stored only on this device and is never included in backups. API use is billed to your Anthropic account, usually a few cents per paste.</p>';
   h += '<div class="row"><label class="fld g">API key<input id="apikey" type="password" autocomplete="off" spellcheck="false" placeholder="' + (has ? 'Saved. Paste a new key to replace it' : 'sk-ant-…') + '"></label><button class="btn pri" data-act="saveKey">Save</button>' + (has ? '<button class="btn" data-act="testKey"' + (ui.keyBusy ? ' disabled' : '') + '>' + (ui.keyBusy ? 'Checking…' : 'Test') + '</button><button class="btn ghost" style="color:var(--bad)" data-act="clearKey">Remove</button>' : '') + '</div></div>';
-  var gid = getClientId();
-  h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("mail") + '</span><div><h3 style="font:500 1.15rem var(--display)">Gmail</h3><div class="meta">' + (gid ? 'Set up. Import from the Claude tab.' : 'Not set up') + '</div></div></div>'
-    + '<p class="lede" style="margin-top:12px">Lets Fernweh read booking emails, read-only, so Claude can add them. Emails go from Gmail to this device and to Claude; nothing is stored except what you add. This needs a free Google client ID, set up once:</p>'
-    + '<details class="steps"><summary>How to get a Google client ID (about 10 minutes)</summary><ol>'
+  var gid = getClientId(), mk = getMapsKey(), origin = esc(location.origin);
+  h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("map") + '</span><div><h3 style="font:500 1.15rem var(--display)">Google: Maps and Gmail</h3><div class="meta">Maps ' + (mk ? 'on' : 'not set up') + ' · Gmail ' + (gid ? 'on' : 'not set up') + '</div></div></div>'
+    + '<p class="lede" style="margin-top:12px">Google Maps shows your places on a map with exact locations. Gmail lets Claude read booking emails, read-only. Both are set up once in the same free Google Cloud project. Keys stay on this device.</p>'
+    + '<details class="steps"><summary>Set up both in one go (about 15 minutes)</summary>'
+    + '<p class="pkcat" style="margin-left:0">1 · Project and billing</p><ol>'
     + '<li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud Console</a> and create a project called Fernweh.</li>'
-    + '<li>In <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noopener">APIs &amp; Services → Library</a>, enable the <b>Gmail API</b>.</li>'
+    + '<li>Open <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener">Billing</a> and link a billing account. Maps needs one even though personal use stays inside the free monthly allowance. Optional: under Budgets &amp; alerts, set a small budget so Google emails you if anything is ever charged.</li>'
+    + '<li>In <a href="https://console.cloud.google.com/apis/library" target="_blank" rel="noopener">APIs &amp; Services → Library</a>, enable <b>Maps JavaScript API</b>, <b>Places API (New)</b> and <b>Gmail API</b>.</li></ol>'
+    + '<p class="pkcat" style="margin-left:0">2 · Maps key</p><ol>'
+    + '<li>In <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a>, choose Create credentials → <b>API key</b>.</li>'
+    + '<li>Edit the key. Under Application restrictions choose <b>Websites</b> and add <code>' + origin + '/*</code>. Under API restrictions choose <b>Maps JavaScript API</b> and <b>Places API (New)</b>. Save.</li>'
+    + '<li>Copy the key into <b>Google Maps key</b> below.</li></ol>'
+    + '<p class="pkcat" style="margin-left:0">3 · Gmail client ID</p><ol>'
     + '<li>Open <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Google Auth Platform</a>, click Get started, name the app Fernweh, choose <b>External</b>, and enter your email.</li>'
     + '<li>Under <b>Audience</b>, add your own Gmail address as a <b>test user</b>.</li>'
-    + '<li>Under <b>Clients</b>, create a client of type <b>Web application</b>. Under Authorized JavaScript origins, add <code>' + esc(location.origin) + '</code>.</li>'
-    + '<li>Copy the <b>Client ID</b> (it ends in .apps.googleusercontent.com) and paste it below.</li></ol>'
-    + '<p class="meta">Google will warn that the app is unverified. That is expected for an app only you use: choose Continue.</p></details>'
-    + '<div class="row"><label class="fld g">Google client ID<input id="gclient" value="' + esc(gid) + '" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label><button class="btn pri" data-act="saveGmail">Save</button>' + (gid ? '<button class="btn ghost" style="color:var(--bad)" data-act="clearGmail">Remove</button>' : '') + '</div></div>';
+    + '<li>Under <b>Clients</b>, create a client of type <b>Web application</b>. Under Authorized JavaScript origins, add <code>' + origin + '</code>.</li>'
+    + '<li>Copy the <b>Client ID</b> (it ends in .apps.googleusercontent.com) into <b>Gmail client ID</b> below.</li></ol>'
+    + '<p class="meta">When you first connect Gmail, Google warns that the app is unverified. That is expected for an app only you use: choose Continue.</p></details>'
+    + '<div class="row"><label class="fld g">Google Maps key<input id="mapskey" type="password" autocomplete="off" spellcheck="false" placeholder="' + (mk ? 'Saved. Paste a new key to replace it' : 'AIza…') + '"></label><button class="btn pri" data-act="saveMaps">Save</button>' + (mk ? '<button class="btn ghost" style="color:var(--bad)" data-act="clearMaps">Remove</button>' : '') + '</div>'
+    + '<div class="row"><label class="fld g">Gmail client ID<input id="gclient" value="' + esc(gid) + '" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label><button class="btn pri" data-act="saveGmail">Save</button>' + (gid ? '<button class="btn ghost" style="color:var(--bad)" data-act="clearGmail">Remove</button>' : '') + '</div></div>';
   h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("plus") + '</span><div><h3 style="font:500 1.15rem var(--display)">Add trips from a file</h3><div class="meta">Adds to your journal. Nothing is replaced.</div></div></div><p class="lede" style="margin-top:12px">Use this for a Fernweh file of past trips. Trips and destinations with the same name are combined, and adding the same file twice does not duplicate anything.</p><div class="row"><button class="btn pri" data-act="mergePick">' + icon("upload") + 'Choose file</button><input type="file" id="mergeFile" accept=".json,application/json" hidden></div></div>';
   h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon acc">' + icon("upload") + '</span><div><h3 style="font:500 1.15rem var(--display)">Backup and restore</h3><div class="meta">Your journal is saved on this device</div></div></div><p class="lede" style="margin-top:12px">Download a copy now and then. To move your trips to another device, copy this text and paste it into Restore there.</p><textarea id="bk" aria-label="Backup data" style="margin-top:12px;min-height:140px">' + esc(JSON.stringify(S)) + '</textarea><div class="row"><button class="btn pri" data-act="dlBackup">Download backup</button><button class="btn" data-act="restore">Restore from text</button></div></div>';
   return h;

@@ -18,10 +18,10 @@ export function norm(o, keys) {
 export function buildPrompt(text, cur, done, year, home) {
   year = year || new Date().getFullYear();
   return 'You organise travel notes into JSON. Return one JSON object with these keys: country (string), city (string), currency (3-letter code for the money in the text, or empty), '
-    + 'itin (array of activities: {city, country, day: number, time: 24h HH:MM or empty, text, via: provider or venue, cost: number as string, spent: number as string, status, booked}), '
+    + 'itin (array of activities: {city, country, day: number, time: 24h HH:MM or empty, text, via: provider or venue, link: a URL from the text for this activity or empty, cost: number as string, spent: number as string, status, booked}), '
     + 'trans (array: {city, country, mode: Flight|Train|Bus|Ferry|Car|Taxi|Other, no: flight or train number such as EK055, route, via: carrier such as Emirates, date: YYYY-MM-DD, time, ref: booking reference or PNR code, cost, spent, status, booked}), '
-    + 'stays (array: {city, country, name, via: booking platform or hotel, checkin: YYYY-MM-DD, checkout: YYYY-MM-DD, conf, cost, spent, status, booked}), '
-    + 'food (array of restaurants, cafes, bars and bakeries: {city, country, name, type: one of ' + FOOD_TYPES.join(', ') + ', status: "visited" if the text says they ate or drank there, otherwise "want", michelin: one of ' + MICHELIN.filter(Boolean).join(', ') + ' or empty, only if the text says so or you are certain, best50: "yes" only if the text says it is on The World\'s 50 Best Restaurants or 50 Best Bars, otherwise empty, note, link}), '
+    + 'stays (array: {city, country, name, area: neighbourhood or empty, via: booking platform or hotel, checkin: YYYY-MM-DD, checkout: YYYY-MM-DD, conf, cost, spent, status, booked}), '
+    + 'food (array of restaurants, cafes, bars and bakeries: {city, country, name, type: one of ' + FOOD_TYPES.join(', ') + ', cuisine: the cuisine in one or two words such as Sushi, Ramen, French, or empty, recBy: who or what recommended it if the text says, bookVia: the booking platform or app if the text says, bookDate: YYYY-MM-DD of a booked table or empty, bookTime: HH:MM of a booked table or empty, status: "visited" if the text says they ate or drank there, otherwise "want", michelin: one of ' + MICHELIN.filter(Boolean).join(', ') + ' or empty, only if the text says so or you are certain, best50: "yes" only if the text says it is on The World\'s 50 Best Restaurants or 50 Best Bars, otherwise empty, note, link}), '
     + 'places (array of {city, country, name, cat, note, link}), budget (array of other costs: {city, country, label, cat, cost, spent}), packing (array of {text}), notes (string of general guide tips). '
     + 'cat for places is exactly one of: ' + PCATS.join(", ") + '. '
     + 'Put every named restaurant, cafe, bar or bakery in food, not places. Add every named winery, hotel, attraction or shop to places with the right cat, even when it is also in itin or stays. '
@@ -35,7 +35,8 @@ export function buildPrompt(text, cur, done, year, home) {
 
 /** A restaurant with only known values for its type, awards and status. */
 export function normFood(o) {
-  var x = norm(o, ["name", "type", "michelin", "best50", "note", "link", "city", "country"]);
+  var x = norm(o, ["name", "type", "cuisine", "michelin", "best50", "recBy", "bookVia", "bookDate", "bookTime", "note", "link", "city", "country"]);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(x.bookDate)) x.bookDate = "";
   if (FOOD_TYPES.indexOf(x.type) < 0) x.type = "Other";
   x.status = String((o && o.status) || "").trim().toLowerCase() === "visited" ? "visited" : "want";
   if (MICHELIN.indexOf(x.michelin) < 0) x.michelin = "";
@@ -51,10 +52,10 @@ export function normRes(r, cur) {
     country: String(r.country || (cur && cur.c && cur.c.name) || "").trim(),
     city: String(r.city || (cur && cur.city && cur.city.name) || "").trim(),
     currency: String(r.currency || "").trim().toUpperCase().slice(0, 4),
-    itin: arr(r.itin).map(function (o) { return norm(o, ["day", "time", "text", "via", "cost", "spent"].concat(C, B)); }),
+    itin: arr(r.itin).map(function (o) { return norm(o, ["day", "time", "text", "via", "link", "cost", "spent"].concat(C, B)); }),
     food: arr(r.food).map(function (o) { return normFood(o); }),
     trans: arr(r.trans).map(function (o) { return norm(o, ["mode", "no", "route", "via", "date", "time", "ref", "cost", "spent"].concat(C, B)); }),
-    stays: arr(r.stays).map(function (o) { return norm(o, ["name", "via", "checkin", "checkout", "conf", "cost", "spent"].concat(C, B)); }),
+    stays: arr(r.stays).map(function (o) { return norm(o, ["name", "area", "via", "checkin", "checkout", "conf", "cost", "spent"].concat(C, B)); }),
     places: arr(r.places).map(function (o) { return norm(o, ["name", "cat", "note", "link"].concat(C)); }),
     budget: arr(r.budget).map(function (o) { return norm(o, ["label", "cat", "cost", "spent"].concat(C)); }),
     packing: arr(r.packing).map(function (o) { return norm(o, ["text"]); }),
@@ -166,11 +167,11 @@ export const BRAIN_SCHEMA = {
   type: "object",
   properties: {
     country: { type: "string" }, city: { type: "string" }, currency: { type: "string" },
-    itin: list(strObj(["city", "country", "day", "time", "text", "via", "cost", "spent", "status", "booked"], BOOK)),
+    itin: list(strObj(["city", "country", "day", "time", "text", "via", "link", "cost", "spent", "status", "booked"], BOOK)),
     trans: list(strObj(["city", "country", "mode", "no", "route", "via", "date", "time", "ref", "cost", "spent", "status", "booked"],
       Object.assign({ mode: ["Flight", "Train", "Bus", "Ferry", "Car", "Taxi", "Other"] }, BOOK))),
-    stays: list(strObj(["city", "country", "name", "via", "checkin", "checkout", "conf", "cost", "spent", "status", "booked"], BOOK)),
-    food: list(strObj(["city", "country", "name", "type", "status", "michelin", "best50", "note", "link"], { type: FOOD_TYPES, status: ["want", "visited"], michelin: MICHELIN, best50: ["", "yes"] })),
+    stays: list(strObj(["city", "country", "name", "area", "via", "checkin", "checkout", "conf", "cost", "spent", "status", "booked"], BOOK)),
+    food: list(strObj(["city", "country", "name", "type", "cuisine", "status", "michelin", "best50", "recBy", "bookVia", "bookDate", "bookTime", "note", "link"], { type: FOOD_TYPES, status: ["want", "visited"], michelin: MICHELIN, best50: ["", "yes"] })),
     places: list(strObj(["city", "country", "name", "cat", "note", "link"], { cat: PCATS })),
     budget: list(strObj(["city", "country", "label", "cat", "cost", "spent"])),
     packing: list(strObj(["text"])),

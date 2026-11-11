@@ -54,3 +54,12 @@ test("CSV includes restaurants", () => {
   const row = parseCSV(buildCsv({ c: { name: "P" }, city: c }))[1];
   assert.deepEqual(row.slice(0, 3), ["Restaurant", "Belcanto", "Fine dining - 2 stars - World's 50 Best - Visited"]);
 });
+
+test("restaurant fields from Claude: cuisine, recommender, booking", () => {
+  const r = normFood({ name: "Sezanne", cuisine: "French", recBy: "Japan Times", bookVia: "Omakase", bookDate: "2024-04-10", bookTime: "12:00" });
+  assert.deepEqual([r.cuisine, r.recBy, r.bookVia, r.bookDate, r.bookTime], ["French", "Japan Times", "Omakase", "2024-04-10", "12:00"]);
+  assert.equal(normFood({ name: "x", bookDate: "10 April" }).bookDate, "");
+  for (const k of ["cuisine", "recBy", "bookVia", "bookDate", "bookTime"]) assert.ok(BRAIN_SCHEMA.properties.food.items.required.includes(k), k);
+  assert.ok(BRAIN_SCHEMA.properties.stays.items.required.includes("area"));
+  assert.ok(BRAIN_SCHEMA.properties.itin.items.required.includes("link"));
+});

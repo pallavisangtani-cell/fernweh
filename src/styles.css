@@ -295,3 +295,27 @@ button.pill{cursor:pointer}
 .mail b{display:block;font-size:.92rem;overflow-wrap:anywhere}
 .mail small{display:block;color:var(--mute);font-size:.78rem}
 .mail .snip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
+
+/* ---------- Days, bookings, map ---------- */
+.dayhead{gap:10px;flex-wrap:wrap}
+.dayhead .dd{display:flex;align-items:baseline;gap:8px}
+.dayhead .dd span{font-size:.82rem;color:var(--mute);font-weight:600}
+.dayplace{flex:1;min-width:120px;border:0;border-bottom:1px dashed var(--line2);border-radius:0;background:none;padding:4px 2px;font-weight:600;color:var(--accent)}
+.dayplace::placeholder{color:var(--mute);font-weight:500}
+.dsum{font-size:.8rem;color:var(--mute);font-variant-numeric:tabular-nums}
+.act.res::before{background:var(--brand);box-shadow:0 0 0 4px var(--brand-soft)}
+.act.res b svg.i{width:16px;height:16px;vertical-align:-3px}
+.booked{display:flex;align-items:center;gap:6px;font-size:.84rem;font-weight:600;color:var(--brand)}
+.booked svg.i{width:16px;height:16px}
+.item .meta svg.i{width:14px;height:14px;vertical-align:-2px}
+.gmap{height:min(62vh,560px);border-radius:20px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);background:var(--sunk)}
+.chip.mapk{display:inline-flex;align-items:center;gap:7px}
+.chip.mapk i{width:10px;height:10px;border-radius:50%}
+.chip.mapk:not(.on){opacity:.6}
+.geo-note{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--brand-soft);color:var(--ink);border-radius:14px;padding:10px 14px;margin-bottom:12px;font-size:.88rem}
+.geo-note span{flex:1;min-width:160px}
+.pop{font:14px/1.45 var(--body);color:#13212e;max-width:230px}
+.pop b{display:block;font-size:15px}
+.pop div{color:#5b6670;font-size:13px}
+.pop .addr{margin:4px 0}
+.pop a{display:inline-block;margin-top:6px;font-weight:600;color:#0e6b72}

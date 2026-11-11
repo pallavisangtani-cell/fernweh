@@ -13,6 +13,7 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - `src/share.js`: standalone trip guide (`buildShareDoc`) and `shareText`. Both take `{itin, costs}` options.
 - `src/platform.js`: Claude calls (`claudeJson`, `testKey`, key storage), file downloads (`saveFile`) and upload reading. Claude is called from the browser with the user's own key via the bundled SDK in `vendor/` (`dangerouslyAllowBrowser`), model `claude-opus-5-5`, structured outputs (`output_config.format`) and server-side `fallbacks: "default"`. The SDK sends the key as `Authorization: Bearer`.
 - `src/weather.js`: Open-Meteo (no key). `weatherPlan` picks forecast (within 16 days), actual (past) or typical (same dates last year); results cached in localStorage `fernweh-weather`.
+- `src/maps.js`: Google Maps inside the app with the user's own Maps Platform key (Settings, localStorage `fernweh-maps-key`). `findPlace` uses Places API (New) `Place.searchByText`; results are stored on items as `geo: {lat, lng, addr, url}` and `url` becomes the item's Maps link. `drawMap` uses AdvancedMarkerElement with `DEMO_MAP_ID`. Pure helpers `pins`, `missingGeo`, `searchText` are tested.
 - `src/gmail.js`: read-only Gmail import via Google Identity Services token client, using the user's own OAuth client ID (Settings, localStorage `fernweh-gmail-client`). Emails go Gmail -> device -> Claude; nothing stored.
 - `src/brain.js` also holds `BRAIN_SCHEMA` and `PACK_SCHEMA`, the JSON schemas Claude must answer in. Keep `BRAIN_SCHEMA` in step with `normRes`.
 - `src/state.js`: the live journal `S` (never reassigned; `replaceState` swaps contents in place), UI state, `load`/`save`.
@@ -28,9 +29,10 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 
 ## Data model
 - `S.home`: the traveller's home city (Settings), used in the Brain Box routing rule.
-- `S.countries[]` (a **trip**): `{id, name, status: "planned"|"visited", year, note, tbudget, cur, start, end, packing[], cities[]}`. `start`/`end` set by hand win over booking dates in `tripRange`. Packing is trip-level (items `{id, text, cat?, why?, done}`); `fix()` lifts old per-city packing. Budget and currency are trip-level; all amounts in a trip are in its `cur`.
+- `S.countries[]` (a **trip**): `{id, name, status: "planned"|"visited", year, note, tbudget, cur, start, end, packing[], cities[]}`. `start`/`end` set by hand win over booking dates in `tripRange`. `days: {n: place}` names where the traveller goes on itinerary day n; day n's date is trip start + n - 1 (`dateOfDay`). Packing is trip-level (items `{id, text, cat?, why?, done}`); `fix()` lifts old per-city packing. Budget and currency are trip-level; all amounts in a trip are in its `cur`.
 - city (a **destination**): `{id, name, status: "planning"|"completed", itin[], trans[], stays[], food[], places[], budget[], packing[], notes}`. Old saves also carry `cur`/`tbudget` per city; `fix()` lifts them to the trip and ignores them after.
-- `food` items (restaurants): `{id, name, type (FOOD_TYPES), status: "want"|"visited", michelin (MICHELIN), best50: "yes"|"", note, link}`. `fix()` moves old `places` in "Food & drink" into `food` once (`_foodMoved` flag).
+- `food` items (restaurants): `{id, name, type (FOOD_TYPES), cuisine (free text, CUISINES suggestions), status: "want"|"visited", michelin (MICHELIN), best50: "yes"|"", recBy, bookVia, bookDate, bookTime, note, link, geo?}`. A `bookDate` shows the table in the itinerary on that day (`reservations`).
+- `stays` also have `area` (neighbourhood); `itin` items have `link`. `fix()` moves old `places` in "Food & drink" into `food` once (`_foodMoved` flag).
 - Bookable items (`itin`, `trans`, `stays`) carry `status` ("tentative"|"confirmed"), `booked` ("yes"|"no"), `via` (carrier or booking platform), `cost` (planned) and `spent`.
 - `trans` items also have `mode`, `no` (flight or train number), `route`, `date`, `time`, `ref` (booking reference).
 - `places` items have `cat`: Hotel, Vineyard, Sights, Activity, Shopping, Other.
@@ -46,8 +48,7 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - Brain Box: pastes or uploads (xlsx, docx, csv, txt) go to an LLM that returns JSON; each item carries its own city and country. A "past trips" tickbox marks everything completed, booked and spent, and adds the country to the passport.
 
 ## Known limits
-- No Gmail or Google Maps connection. Hotel and flight confirmations are pasted by hand. A real app could use Gmail OAuth and the Google Maps/Places API for pins and geocoding.
-- No map view. Places only link out to Google Maps.
+- Items cannot be edited after adding, only deleted and re-added.
 - Data lives in one browser. Moving to a database would give sync across devices and real sharing links.
 - No PDF import. Excel, Word, CSV and text work.
 
@@ -57,4 +58,4 @@ A flight or train is filed under its destination city, except the final leg that
 ## Suggested first tasks
 1. ~~Split the single file into modules and add tests for `normRes`, `mergeRes`, `chunkText` and `buildCsv`.~~ Done.
 2. Collect real pasted bookings the model got wrong, and use them as regression tests for the prompt.
-3. Add a map view and Gmail import.
+3. ~~Add a map view and Gmail import.~~ Done.

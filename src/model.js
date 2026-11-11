@@ -33,6 +33,7 @@ export function fix(S) {
       c.tbudget = any ? String(sum) : "";
     }
     if (!c.cur) c.cur = (c.cities[0] && c.cities[0].cur) || "USD";
+    if (!c.days || typeof c.days !== "object") c.days = {};
     if (c.start == null) c.start = "";
     if (c.end == null) c.end = "";
     // Packing is trip-level: one list per trip. Older saves kept a list per destination.
@@ -54,7 +55,7 @@ export function findTrip(S, id) {
 }
 
 export function newTrip(name, status, cur) {
-  return { id: uid(), name: name, status: status || "planned", year: "", note: "", tbudget: "", cur: cur || "USD", start: "", end: "", packing: [], cities: [] };
+  return { id: uid(), name: name, status: status || "planned", year: "", note: "", tbudget: "", cur: cur || "USD", start: "", end: "", days: {}, packing: [], cities: [] };
 }
 
 /** Totals for a set of destinations, in the same shape as totals(). */
@@ -104,8 +105,9 @@ export function title(k, it) {
 }
 
 /** Restaurants matching the filters: status "all"|"want"|"visited", type "All" or a category, award ""|"michelin"|"best50". */
-export function filterFood(list, status, type, award) {
+export function filterFood(list, status, type, award, cuisine) {
   return list.filter(function (r) {
+    if (cuisine && cuisine !== "All" && String(r.cuisine || "").toLowerCase() !== cuisine.toLowerCase()) return false;
     if (status && status !== "all" && (r.status || "want") !== status) return false;
     if (type && type !== "All" && (r.type || "Other") !== type) return false;
     if (award === "michelin" && !r.michelin) return false;
@@ -204,4 +206,18 @@ export function mergeJournal(S, d) {
     });
   });
   return add;
+}
+
+/* ---------- Itinerary days and dates ---------- */
+export function addDays(iso, n) { var d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+/** Date of itinerary day n (1 = the trip's first day), or "" without a start date. */
+export function dateOfDay(start, n) { n = parseInt(n, 10); return ISO.test(start || "") && n >= 1 ? addDays(start, n - 1) : ""; }
+/** Itinerary day number of a date, or 0 when there is no start date or it falls before it. */
+export function dayOfDate(start, iso) { if (!ISO.test(start || "") || !ISO.test(iso || "")) return 0; var d = daysBetween(start, iso) + 1; return d >= 1 ? d : 0; }
+
+/** Restaurant tables with a booked date, as itinerary entries for the trip starting on `start`. */
+export function reservations(city, start) {
+  return (city.food || []).filter(function (r) { return ISO.test(r.bookDate || ""); }).map(function (r) {
+    return { _res: true, id: "res-" + r.id, day: String(dayOfDate(start, r.bookDate) || ""), date: r.bookDate, time: r.bookTime || "", text: r.name, via: r.bookVia || "", food: r };
+  });
 }

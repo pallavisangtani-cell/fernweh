@@ -10,6 +10,7 @@ import { S, sel, brain, shareOpt, ui, load, save, replaceState } from "./state.j
 import { $, toast, renderTree, renderMain, destRange, weatherKey } from "./ui/render.js";
 import { weatherText } from "./weather.js";
 import { setClientId, findBookings, readEmails, emailForClaude } from "./gmail.js";
+import { setMapsKey, missingGeo, findPlace, searchText } from "./maps.js";
 
 const CHUNK = 12000, MAX_CHUNKS = 6;
 // The open trip and, if one is chosen, the destination: {c, city} (city may be null).
@@ -85,6 +86,25 @@ async function suggestPack() {
     save(); toast(n ? "Claude added " + n + " suggestions." : "Nothing new to add.");
   } catch (e) { toast(aiError(e)); }
   ui.packBusy = false; renderMain();
+}
+
+/** Look up each stay, restaurant and place without a location (in the open trip or destination) with Google. */
+async function geoFind() {
+  var f = cur(), g = ui.geo; if (!f || g.busy) return;
+  var todo = missingGeo(f.city ? [f.city] : f.c.cities).slice(0, 40), found = 0, missed = [];
+  if (!todo.length) return;
+  g.busy = true; g.err = "";
+  try {
+    for (var i = 0; i < todo.length; i++) {
+      var x = todo[i];
+      g.status = "Finding " + (i + 1) + " of " + todo.length + ": " + x.item.name + "…"; renderMain();
+      var geo = await findPlace(searchText(x.item.name, x.city.name, x.item.area));
+      if (geo) { x.item.geo = geo; found++; } else missed.push(x.item.name);
+    }
+    if (missed.length) g.err = "Google could not find: " + missed.join(", ") + ". Its Maps button still works. To pin it, delete it and add it again with a fuller name, for example with the area.";
+    toast("Found " + found + (found === 1 ? " location." : " locations."));
+  } catch (e) { g.err = (e && e.message) || "Could not reach Google."; }
+  g.busy = false; g.status = ""; save(); renderMain();
 }
 
 async function gmailFind() {
@@ -179,6 +199,11 @@ document.addEventListener("click", function (e) {
   else if (a === "importPick") { if (!f || !f.city) { toast("Choose a destination first, then import."); return; } $("csv").click(); }
   else if (a === "pcat") { sel.pcat = id; renderMain(); }
   else if (a === "fstat") { sel.fstat = id; renderMain(); }
+  else if (a === "fcuisine") { sel.fcuisine = id; renderMain(); }
+  else if (a === "mapKind") { sel.mapKinds[id] = !sel.mapKinds[id]; renderMain(); }
+  else if (a === "geoFind") { geoFind(); }
+  else if (a === "saveMaps") { var mv = $("mapskey").value.trim(); if (!mv) { toast("Paste your Google Maps key first."); return; } setMapsKey(mv); renderMain(); toast(window.google && window.google.maps ? "Google Maps key saved. Reload the app once to use the new key." : "Google Maps key saved on this device."); }
+  else if (a === "clearMaps") { setMapsKey(""); renderMain(); toast("Google Maps key removed from this device."); }
   else if (a === "ftype") { sel.ftype = id; renderMain(); }
   else if (a === "faward") { sel.faward = sel.faward === id ? "" : id; renderMain(); }
   else if (a === "toggleDone" && f) {
@@ -229,6 +254,7 @@ document.addEventListener("change", function (e) {
     if (f.c.start && f.c.end && f.c.end < f.c.start) { if (t.dataset.tdate === "start") f.c.end = f.c.start; else f.c.start = f.c.end; }
     save(); renderTree(); renderMain();
   }
+  else if (t.dataset && t.dataset.dayplace && f) { var dv = t.value.trim(); if (dv) f.c.days[t.dataset.dayplace] = dv; else delete f.c.days[t.dataset.dayplace]; save(); }
   else if (t.dataset && t.dataset.home) { S.home = t.value.trim(); save(); toast(S.home ? "Home set to " + S.home + "." : "Home cleared."); }
   else if (t.id === "gmonths") { ui.gmail.months = t.value; }
   else if (t.dataset && t.dataset.cyear) { S.countries.forEach(function (c) { if (c.id === t.dataset.cyear) c.year = t.value.trim(); }); save(); renderTree(); }
