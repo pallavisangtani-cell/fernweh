@@ -83,6 +83,9 @@ function homeHtml() {
   var h = '<div class="hello"><div><div class="eyebrow">' + esc(new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })) + '</div><h1 class="page">Where to next?</h1></div>'
     + '<button class="btn acc" data-act="brain">' + icon("sparkle") + 'Paste a booking</button></div>';
   h += '<div class="stats"><div class="stat"><b>' + S.countries.length + '</b><span>Trips</span></div><div class="stat"><b>' + dests + '</b><span>Destinations</span></div><div class="stat"><b>' + visitedCount() + '</b><span>Completed</span></div></div>';
+  var gNeed = [!getMapsKey() ? "Google Maps" : "", !getClientId() ? "Gmail" : ""].filter(Boolean), hid = false;
+  try { hid = localStorage.getItem("fernweh-hide-google") === "1"; } catch (e) {}
+  if (gNeed.length && !hid) h += '<div class="keynote" style="background:var(--brand-soft)">' + icon("map") + '<div style="flex:1"><b>Reminder: finish the Google setup.</b> ' + esc(gNeed.join(" and ")) + (gNeed.length > 1 ? ' are' : ' is') + ' not connected yet. It takes about 15 minutes, once.<div class="acts" style="margin-top:8px"><button class="btn sm pri" data-act="settings">Set up now</button><button class="btn sm ghost" data-act="hideGoogle">Hide</button></div></div></div>';
   h += '<div class="addtrip"><input id="newCountry" placeholder="Plan a new trip, e.g. Germany 2026" aria-label="New trip name"><button class="btn pri" data-act="addCountry">' + icon("plus") + 'Add trip</button></div>';
   if (!S.countries.length) {
     return h + '<div class="panel" style="text-align:center;padding:34px 20px"><div class="ticon acc" style="margin:0 auto 12px;width:52px;height:52px;border-radius:16px">' + icon("Flight") + '</div><h2 style="font:500 1.4rem var(--display)">Your first trip starts here</h2><p class="lede" style="margin:8px auto 0">Add a trip above, or paste a flight or hotel confirmation and Claude will set it up for you.</p></div>';
@@ -95,11 +98,13 @@ function homeHtml() {
 }
 
 /* ---------- Destination ---------- */
-function fieldHtml(f) {
-  var st = f.grow ? "" : "width:" + (f.w || 140) + "px", inp;
-  if (f.type === "select") inp = '<select data-f="' + f.k + '" aria-label="' + esc(f.ph) + '" style="' + st + '">' + f.opts.map(function (o) { return '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>'; }).join("") + '</select>';
-  else if (f.type === "list") inp = '<input data-f="' + f.k + '" list="dl-' + f.k + '" aria-label="' + esc(f.ph) + '" style="' + st + '"><datalist id="dl-' + f.k + '">' + CUISINES.map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join("") + '</datalist>';
-  else inp = '<input data-f="' + f.k + '" type="' + (f.type || "text") + '" aria-label="' + esc(f.ph) + '" style="' + st + '">';
+/** One form field. `item` pre-fills it (editing); `attr` is data-f for the add form, data-e for the edit form. */
+function fieldHtml(f, item, attr) {
+  attr = attr || "data-f";
+  var st = f.grow ? "" : "width:" + (f.w || 140) + "px", inp, v = item && item[f.k] != null ? String(item[f.k]) : "", val = item ? ' value="' + esc(v) + '"' : '';
+  if (f.type === "select") inp = '<select ' + attr + '="' + f.k + '" aria-label="' + esc(f.ph) + '" style="' + st + '">' + f.opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (item && o[0] === v ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join("") + '</select>';
+  else if (f.type === "list") inp = '<input ' + attr + '="' + f.k + '"' + val + ' list="dl-' + f.k + '" aria-label="' + esc(f.ph) + '" style="' + st + '"><datalist id="dl-' + f.k + '">' + CUISINES.map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join("") + '</datalist>';
+  else inp = '<input ' + attr + '="' + f.k + '"' + val + ' type="' + (f.type || "text") + '" aria-label="' + esc(f.ph) + '" style="' + st + '">';
   return '<label class="fld' + (f.grow ? ' g' : '') + '">' + esc(f.ph) + inp + '</label>';
 }
 function badges(k, it, cid) {
@@ -110,9 +115,19 @@ function moneyHtml(k, it, cid) {
   var p = planned(it);
   return '<div class="money"><span>' + (p ? 'Planned <strong>' + esc(fmt(p)) + '</strong>' : 'No cost set') + '</span><label>Spent <input type="number" inputmode="decimal" data-spent="' + it.id + '" data-list="' + k + '" data-cid="' + cid + '" value="' + esc(it.spent || "") + '" placeholder="0" aria-label="Amount spent"></label></div>';
 }
-function del(k, it, cid) { return '<button class="x" data-act="del" data-list="' + k + '" data-id="' + it.id + '" data-cid="' + cid + '" aria-label="Delete">' + icon("x") + '</button>'; }
+function del(k, it, cid) {
+  var a = ' data-list="' + k + '" data-id="' + it.id + '" data-cid="' + cid + '"';
+  return '<span class="itemacts"><button class="x" data-act="edit"' + a + ' aria-label="Edit">' + icon("edit") + '</button><button class="x" data-act="del"' + a + ' aria-label="Delete">' + icon("x") + '</button></span>';
+}
+/** The edit form shown in place of an item's card. */
+function isEditing(it) { return sel.edit && sel.edit.id === it.id; }
+function editForm(k, it, cid) {
+  var fields = k === "packing" ? [{ k: "text", ph: "Item", grow: 1 }] : TABS[k].fields;
+  return '<div class="card form editing" id="editcard"><div class="eyebrow" style="margin-bottom:6px">Edit ' + esc(title(k, it) || "item") + '</div><div class="row" id="editform" style="margin:0" data-list="' + k + '" data-id="' + it.id + '" data-cid="' + cid + '">' + fields.map(function (f) { return fieldHtml(f, it, "data-e"); }).join("") + '<button class="btn pri" data-act="saveEdit">Save</button><button class="btn ghost" data-act="cancelEdit">Cancel</button></div></div>';
+}
 
 function passHtml(it, cid) {
+  if (isEditing(it)) return editForm("trans", it, cid);
   var rp = routeParts(it.route), long = function (s) { return s.length > 4 ? ' class="long"' : ''; };
   var facts = [["Date", it.date ? niceDate(it.date, true) : ""], ["Time", it.time], ["Ref", it.ref]].filter(function (f) { return f[1]; });
   return '<div class="pass"><div class="ptop"><span style="display:flex;align-items:center;gap:8px">' + icon(it.mode || "Flight") + esc([it.via, it.no].filter(Boolean).join(" · ") || it.mode || "Transport") + '</span>' + del("trans", it, cid) + '</div>'
@@ -120,12 +135,14 @@ function passHtml(it, cid) {
     + '<div class="tear"></div><div class="stub">' + (facts.length ? '<div class="facts">' + facts.map(function (f) { return '<div>' + f[0] + '<b>' + esc(f[1]) + '</b></div>'; }).join("") + '</div>' : '') + badges("trans", it, cid) + moneyHtml("trans", it, cid) + '</div></div>';
 }
 function stayHtml(it, cid) {
+  if (isEditing(it)) return editForm("stays", it, cid);
   var n = nights(it.checkin, it.checkout), dates = (it.checkin || it.checkout) ? niceDate(it.checkin, true) + " – " + niceDate(it.checkout, true) : "";
   return '<div class="card item"><div class="cardhead"><div class="ttl"><span class="ticon">' + icon("Bed") + '</span><div><b>' + esc(it.name) + '</b>' + (n ? '<div class="nights">' + n + (n === 1 ? ' night' : ' nights') + '</div>' : '') + (it.area ? '<div class="meta">' + icon("pin") + ' ' + esc(it.area) + '</div>' : '') + '<div class="meta">' + esc([dates, it.conf ? "Conf. " + it.conf : ""].filter(Boolean).join(" · ")) + '</div></div></div>' + del("stays", it, cid) + '</div>' + badges("stays", it, cid) + moneyHtml("stays", it, cid) + '</div>';
 }
 /** Best Maps link for an item: its own link, the exact Google place once found, else a search. */
 function mapLink(it, city) { return /^https?:/i.test(it.link || "") ? it.link : (it.geo && it.geo.url) || mapsUrl(it.name, (it.area ? it.area + ", " : "") + city.name); }
 function placeHtml(it, city, cid) {
+  if (isEditing(it)) return editForm("places", it, cid);
   var u = mapLink(it, city);
   return '<div class="card item place"><div class="cardhead"><div><div class="pcat">' + esc(it.cat || "Other") + '</div><b>' + esc(it.name) + '</b></div>' + del("places", it, cid) + '</div>' + (it.note ? '<div class="meta">' + esc(it.note) + '</div>' : '') + '<div class="go"><a class="btn sm" href="' + esc(u) + '" target="_blank" rel="noopener">' + icon("map") + 'Open in Maps</a></div></div>';
 }
@@ -135,6 +152,7 @@ function michelinLabel(m) {
   return n ? new Array(n + 1).join("★") + " Michelin" : m;
 }
 function foodHtml(it, city, cid) {
+  if (isEditing(it)) return editForm("food", it, cid);
   var u = mapLink(it, city), v = it.status === "visited";
   var awards = (it.michelin ? '<span class="pill mich">' + esc(michelinLabel(it.michelin)) + '</span>' : '') + (it.best50 === "yes" ? '<span class="pill b50">World\'s 50 Best</span>' : '');
   return '<div class="card item place food"><div class="cardhead"><div><div class="pcat">' + esc([it.cuisine, it.type && it.type !== "Other" ? it.type : ""].filter(Boolean).join(" · ") || "Restaurant") + '</div><b>' + esc(it.name) + '</b></div>' + del("food", it, cid) + '</div>'
@@ -144,9 +162,11 @@ function foodHtml(it, city, cid) {
     + '<div class="go" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="pill ' + (v ? 'ok' : 'brand') + '" data-act="flip" data-k="visit" data-list="food" data-id="' + it.id + '" data-cid="' + cid + '" title="Tap to change">' + (v ? icon("check") + 'Visited' : 'Want to visit') + '</button><a class="btn sm" href="' + esc(u) + '" target="_blank" rel="noopener">' + icon("map") + 'Maps</a></div></div>';
 }
 function costHtml(it, cid) {
+  if (isEditing(it)) return editForm("budget", it, cid);
   return '<div class="card item"><div class="cardhead"><div class="ttl"><span class="ticon acc">' + icon("wallet") + '</span><div><b>' + esc(it.label) + '</b>' + (it.cat ? '<div class="meta">' + esc(it.cat) + '</div>' : '') + '</div></div>' + del("budget", it, cid) + '</div>' + moneyHtml("budget", it, cid) + '</div>';
 }
 function actHtml(it, cid) {
+  if (isEditing(it)) return editForm("itin", it, cid);
   if (it._res) return '<div class="act res"><div class="tm">' + esc(it.time || "Booked") + '</div><b>' + icon("fork") + ' Table at ' + esc(it.text) + '</b><div class="meta">' + esc([it.food.cuisine, it.via ? "via " + it.via : ""].filter(Boolean).join(" · ")) + '</div><div class="badges"><button class="pill brand" data-act="tab" data-id="food">See in Restaurants</button></div></div>';
   var link = /^https?:/i.test(it.link || "") ? '<a class="btn sm" style="margin-top:8px" href="' + esc(it.link) + '" target="_blank" rel="noopener">' + icon("share") + 'Open link</a>' : '';
   return '<div class="act"><div class="cardhead" style="display:flex;justify-content:space-between;gap:10px"><div>' + (it.time ? '<div class="tm">' + esc(it.time) + '</div>' : '') + '<b>' + esc(it.text) + '</b></div>' + del("itin", it, cid) + '</div>' + link + badges("itin", it, cid) + moneyHtml("itin", it, cid) + '</div>';
@@ -239,6 +259,7 @@ function listBody(k, ci, list, co) {
 }
 
 function packItem(it, tid) {
+  if (isEditing(it)) return editForm("packing", it, tid);
   return '<div class="pk' + (it.done ? ' done' : '') + '"><input type="checkbox" data-act="tick" data-id="' + it.id + '" data-cid="' + tid + '"' + (it.done ? ' checked' : '') + ' aria-label="Packed"><span>' + esc(it.text) + (it.why ? '<small>' + esc(it.why) + '</small>' : '') + '</span>' + del("packing", it, tid) + '</div>';
 }
 function packingHtml(co) {
@@ -337,6 +358,9 @@ function tabHtml(co, cities) {
   return h;
 }
 
+function renameRow(name) {
+  return '<div class="card form" style="margin-top:10px"><div class="row" style="margin:0"><label class="fld g">New name<input id="renameIn" value="' + esc(name) + '"></label><button class="btn pri" data-act="renameSave">Save</button><button class="btn ghost" data-act="renameCancel">Cancel</button></div></div>';
+}
 function tripHtml(co) {
   var today = todayIso(), city = sel.city && co.cities.filter(function (c) { return c.id === sel.city; })[0];
   if (!city) sel.city = null;
@@ -358,14 +382,16 @@ function tripHtml(co) {
   if (co.cities.length > 1) h += '<button class="dest' + (!city ? ' on' : '') + '" data-act="dest" data-id=""><i style="' + coverStyle(co.name) + '">' + icon("globe") + '</i><span><b>All</b><small>Whole trip</small></span></button>';
   co.cities.forEach(function (ci) { var cr = tripRange(ci); h += '<button class="dest' + (city === ci ? ' on' : '') + '" data-act="dest" data-id="' + ci.id + '"><i style="' + coverStyle(ci.name) + '"></i><span><b>' + esc(ci.name) + '</b><small>' + esc(cr ? rangeText(cr) : (ci.status === "completed" ? "Done" : "No dates")) + '</small></span></button>'; });
   h += '<div class="dest add"><input data-cityin="' + co.id + '" placeholder="Add destination" aria-label="New destination in ' + esc(co.name) + '"><button class="btn sm pri" data-act="addCity" data-id="' + co.id + '" aria-label="Add destination">' + icon("plus") + '</button></div></div>';
-  if (city) h += '<div class="dest-bar"><span>Showing <b>' + esc(city.name) + '</b></span>' + (sel.confirmCity === city.id ? '<span class="acts"><button class="btn sm" style="color:var(--bad)" data-act="delCityYes" data-id="' + city.id + '">Remove ' + esc(city.name) + '</button><button class="btn sm ghost" data-act="delCityNo">Cancel</button></span>' : '<button class="btn sm ghost" style="color:var(--mute)" data-act="delCity" data-id="' + city.id + '">' + icon("x") + 'Remove destination</button>') + '</div>';
+  if (city) h += '<div class="dest-bar"><span>Showing <b>' + esc(city.name) + '</b></span>' + (sel.confirmCity === city.id ? '<span class="acts"><button class="btn sm" style="color:var(--bad)" data-act="delCityYes" data-id="' + city.id + '">Remove ' + esc(city.name) + '</button><button class="btn sm ghost" data-act="delCityNo">Cancel</button></span>' : '<span class="acts"><button class="btn sm ghost" style="color:var(--mute)" data-act="rename" data-id="' + city.id + '">' + icon("edit") + 'Rename</button><button class="btn sm ghost" style="color:var(--mute)" data-act="delCity" data-id="' + city.id + '">' + icon("x") + 'Remove destination</button></span>') + '</div>';
+  if (city && sel.rename === city.id) h += renameRow(city.name);
   h += '<div class="tabs" role="tablist">';
   Object.keys(TABS).forEach(function (k) {
     var cnt = 0; if (k === "packing") cnt = co.packing.length; else cities.forEach(function (ci) { if (Array.isArray(ci[k])) cnt += ci[k].length; });
     h += '<button class="tab' + (k === sel.tab ? ' on' : '') + '" role="tab" aria-selected="' + (k === sel.tab) + '" data-act="tab" data-id="' + k + '">' + icon(TAB_ICON[k]) + TABS[k].label + (cnt ? '<span class="n">' + cnt + '</span>' : '') + '</button>';
   });
   h += '</div>' + tabHtml(co, cities);
-  h += '<div class="danger">' + (sel.confirmDel === co.id ? '<span class="meta">Remove this trip and all its destinations?</span><button class="btn sm" style="color:var(--bad)" data-act="delYes" data-id="' + co.id + '">Remove trip</button><button class="btn sm ghost" data-act="delNo">Cancel</button>' : '<button class="btn sm ghost" style="color:var(--mute)" data-act="delCountry" data-id="' + co.id + '">' + icon("x") + 'Remove trip</button>') + '</div>';
+  h += '<div class="danger">' + (sel.confirmDel === co.id ? '<span class="meta">Remove this trip and all its destinations?</span><button class="btn sm" style="color:var(--bad)" data-act="delYes" data-id="' + co.id + '">Remove trip</button><button class="btn sm ghost" data-act="delNo">Cancel</button>' : '<button class="btn sm ghost" style="color:var(--mute)" data-act="rename" data-id="' + co.id + '">' + icon("edit") + 'Rename trip</button><button class="btn sm ghost" style="color:var(--mute)" data-act="delCountry" data-id="' + co.id + '">' + icon("x") + 'Remove trip</button>') + '</div>';
+  if (sel.rename === co.id) h += renameRow(co.name);
   return h;
 }
 

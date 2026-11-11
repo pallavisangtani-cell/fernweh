@@ -319,3 +319,9 @@ button.pill{cursor:pointer}
 .pop div{color:#5b6670;font-size:13px}
 .pop .addr{margin:4px 0}
 .pop a{display:inline-block;margin-top:6px;font-weight:600;color:#0e6b72}
+
+/* ---------- Editing ---------- */
+.itemacts{display:inline-flex;gap:0;flex:none}
+.pass .ptop .itemacts .x{color:inherit}
+.card.editing{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-soft),var(--shadow);grid-column:1/-1}
+.act .card.editing,.day .card.editing{margin:10px 14px;box-shadow:0 0 0 2px var(--brand-soft)}

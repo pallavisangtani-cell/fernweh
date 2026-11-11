@@ -18,7 +18,7 @@ const cur = () => { var co = sel.trip && findTrip(S, sel.trip); if (!co) return 
 // The destination an item belongs to, from its data-cid.
 // Packing items carry "trip:<id>" because the packing list belongs to the trip.
 const cityOf = (el) => { var c = el && el.dataset.cid; if (!c) return null; if (c.indexOf("trip:") === 0) return findTrip(S, c.slice(5)); var r = findCity(S, c); return r ? r.city : null; };
-function openTrip(tripId, cityId, tab) { sel.view = "trip"; sel.trip = tripId; sel.city = cityId || null; sel.form = false; sel.pcat = "All"; sel.confirmDel = null; sel.confirmCity = null; if (tab) sel.tab = tab; renderTree(); renderMain(); window.scrollTo(0, 0); }
+function openTrip(tripId, cityId, tab) { sel.edit = null; sel.rename = null; sel.view = "trip"; sel.trip = tripId; sel.city = cityId || null; sel.form = false; sel.pcat = "All"; sel.confirmDel = null; sel.confirmCity = null; if (tab) sel.tab = tab; renderTree(); renderMain(); window.scrollTo(0, 0); }
 function download(name, data, type) { saveFile(name, data, type).then(toast); }
 
 function addPast() {
@@ -139,6 +139,20 @@ function importCSV(text) {
   save(); renderMain(); toast("Places imported. Set a type on each one so they filter when you share.");
 }
 
+// Fields that, when changed, mean Google should look the place up again.
+const GEO_FIELDS = ["name", "area"];
+function saveEdit() {
+  var form = $("editform"); if (!form) return;
+  var L = form.dataset.list, ic = cityOf(form), it = ic && ic[L].filter(function (x) { return x.id === form.dataset.id; })[0];
+  if (!it) { sel.edit = null; renderMain(); return; }
+  var vals = {}; form.querySelectorAll("[data-e]").forEach(function (x) { vals[x.dataset.e] = x.value.trim(); });
+  var req = L === "packing" ? "text" : TABS[L].req;
+  if (!vals[req]) { toast("That field cannot be empty."); return; }
+  if (it.geo && GEO_FIELDS.some(function (k) { return k in vals && vals[k] !== (it[k] || ""); })) delete it.geo;
+  Object.keys(vals).forEach(function (k) { it[k] = vals[k]; });
+  sel.edit = null; save(); renderTree(); renderMain(); toast("Saved.");
+}
+
 function importJournal(text) {
   var d; try { d = JSON.parse(text); } catch (e) { toast("That file is not a Fernweh file."); return; }
   if (!d || !Array.isArray(d.countries)) { toast("That file is not a Fernweh file."); return; }
@@ -168,8 +182,20 @@ document.addEventListener("click", function (e) {
   else if (a === "delCityNo") { sel.confirmCity = null; renderMain(); }
   else if (a === "delCityYes" && f) { f.c.cities = f.c.cities.filter(function (c) { return c.id !== id; }); sel.city = null; sel.confirmCity = null; save(); renderTree(); renderMain(); toast("Destination removed."); }
   else if (a === "addCity") { var inp = document.querySelector('[data-cityin="' + id + '"]'), v2 = inp.value.trim(); if (!v2) return; var co = findTrip(S, id), nc = newCity(v2, co.cur, co.status === "visited" ? "completed" : "planning"); co.cities.push(nc); save(); openTrip(co.id, nc.id, sel.tab === "over" ? "itin" : sel.tab); }
-  else if (a === "tab") { sel.tab = id; sel.form = false; renderMain(); }
-  else if (a === "toggleForm") { sel.form = !sel.form; renderMain(); }
+  else if (a === "tab") { sel.tab = id; sel.form = false; sel.edit = null; renderMain(); }
+  else if (a === "toggleForm") { sel.form = !sel.form; sel.edit = null; renderMain(); }
+  else if (a === "edit") { sel.edit = { list: L, id: id, cid: b.dataset.cid }; sel.form = false; renderMain(); var ec = $("editcard"); if (ec) { ec.scrollIntoView({ block: "center" }); var fi = ec.querySelector("[data-e]"); if (fi) fi.focus({ preventScroll: true }); } }
+  else if (a === "hideGoogle") { try { localStorage.setItem("fernweh-hide-google", "1"); } catch (x) {} renderMain(); }
+  else if (a === "cancelEdit") { sel.edit = null; renderMain(); }
+  else if (a === "saveEdit") { saveEdit(); }
+  else if (a === "rename") { sel.rename = id; renderMain(); var ri = $("renameIn"); if (ri) { ri.focus(); ri.select(); } }
+  else if (a === "renameCancel") { sel.rename = null; renderMain(); }
+  else if (a === "renameSave") {
+    var nv = $("renameIn").value.trim(); if (!nv) return;
+    var tr = findTrip(S, sel.rename), cr = !tr && findCity(S, sel.rename);
+    if (tr) tr.name = nv; else if (cr) { if (cr.city.name !== nv) cr.city.name = nv; }
+    sel.rename = null; save(); renderTree(); renderMain(); toast("Renamed.");
+  }
   else if (a === "add" && f && sel.tab === "packing") { var pt = $("form").querySelector("[data-f=\"text\"]").value.trim(); if (!pt) return; f.c.packing.push({ id: uid(), text: pt }); sel.form = false; save(); renderMain(); }
   else if (a === "add" && f) {
     var tc = formCity(f); if (!tc) { toast("Add a destination first."); return; }
@@ -272,6 +298,8 @@ document.addEventListener("keydown", function (e) {
   if (t.id === "newCountry") document.querySelector('[data-act="addCountry"]').click();
   else if (t.dataset && t.dataset.cityin) t.nextElementSibling.click();
   else if (t.dataset && t.dataset.f) document.querySelector('[data-act="add"]').click();
+  else if (t.dataset && t.dataset.e) saveEdit();
+  else if (t.id === "renameIn") document.querySelector('[data-act="renameSave"]').click();
 });
 
 load();

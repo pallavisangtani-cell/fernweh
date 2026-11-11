@@ -40,6 +40,8 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 ## Features
 - UI words: a `country` is shown as a **trip** and a `city` as a **destination**. The data model keeps the old names.
 - Home shows one card per trip. The trip page has the trip budget and totals across destinations, a destination switcher (All or one city), and tabs. List tabs are per destination; in All they are grouped by city, items carry `data-cid`, and the add form asks which destination.
+- Editing: every item card has edit and delete buttons (`del()` renders both). Edit replaces the card with a pre-filled form (`editForm`, fields marked `data-e`, `saveEdit` in main.js). Changing a name or area clears `geo` so Google looks it up again. Trips and destinations can be renamed.
+- Home shows a dismissible reminder until Google Maps and Gmail are both set up.
 - Restaurants tab: filter by want/visited, category and award (`filterFood`).
 - Settings > Add trips from a file: `mergeJournal` adds a Fernweh JSON file without replacing anything (matched by name, skips known ids). Use this to import a user's past trips: convert their data to that JSON, never commit it to the repo.
 - Overview, itinerary by day, flights and transport, stays, places, other costs, packing, notes.
@@ -48,7 +50,6 @@ A web app (plain JS ES modules, no build step, no dependencies) for one person t
 - Brain Box: pastes or uploads (xlsx, docx, csv, txt) go to an LLM that returns JSON; each item carries its own city and country. A "past trips" tickbox marks everything completed, booked and spent, and adds the country to the passport.
 
 ## Known limits
-- Items cannot be edited after adding, only deleted and re-added.
 - Data lives in one browser. Moving to a database would give sync across devices and real sharing links.
 - No PDF import. Excel, Word, CSV and text work.
 
