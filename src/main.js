@@ -2,14 +2,14 @@
 import { TABS, STARTER, SAMPLES } from "./constants.js";
 import { uid, arr, slug } from "./util.js";
 import { findCity, findTrip, newCity, newTrip, mergeJournal, tripRange, todayIso } from "./model.js";
-import { buildPrompt, normRes, mergeRes, chunkText, isRoutable, markPast, applyResult, BRAIN_SCHEMA, PACK_SCHEMA, packPrompt } from "./brain.js";
+import { gmailPreamble, bookingsOnly, buildPrompt, normRes, mergeRes, chunkText, isRoutable, markPast, applyResult, BRAIN_SCHEMA, PACK_SCHEMA, packPrompt } from "./brain.js";
 import { buildShareDoc, shareText, tripShare } from "./share.js";
 import { buildCsv, placesFromCsv } from "./csv.js";
 import { claudeJson, aiError, saveFile, readUpload, setApiKey, testKey } from "./platform.js";
 import { S, sel, brain, shareOpt, ui, load, save, replaceState } from "./state.js";
 import { $, toast, renderTree, renderMain, destRange, weatherKey } from "./ui/render.js";
 import { weatherText } from "./weather.js";
-import { setClientId, findBookings, readEmails, emailForClaude } from "./gmail.js";
+import { setClientId, findBookings, readEmails, emailForClaude, seenIds, setSeenIds } from "./gmail.js";
 import { setMapsKey, missingGeo, findPlace, searchText } from "./maps.js";
 
 const CHUNK = 12000, MAX_CHUNKS = 6;
@@ -107,29 +107,43 @@ async function geoFind() {
   g.busy = false; g.status = ""; save(); renderMain();
 }
 
-async function gmailFind() {
+/**
+ * Sync from Gmail: find booking emails not synced before, let Claude pull out the bookings in small batches,
+ * and file them straight into the right trips. A snapshot allows one Undo.
+ */
+const SYNC_MAX = 15, BATCH = 4;
+async function gmailSync() {
   var g = ui.gmail; if (g.busy) return;
-  g.busy = true; g.err = ""; g.status = "Signing in to Google…"; renderMain();
+  g.busy = true; g.err = ""; g.result = null; g.status = "Signing in to Google…"; renderMain();
   try {
-    g.status = "Searching your inbox…"; renderMain();
-    g.list = await findBookings(g.months, 40);
-    g.picked = {}; g.list.slice(0, 15).forEach(function (m) { g.picked[m.id] = true; });
-  } catch (e) { g.err = (e && e.message) || "Could not read Gmail."; }
+    g.status = "Looking for booking emails…"; renderMain();
+    var seen = seenIds(), found = await findBookings(g.months, 60);
+    var fresh = found.filter(function (m) { return !seen[m.id]; }), take = fresh.slice(0, SYNC_MAX);
+    if (!take.length) { g.result = { emails: 0, added: [], updated: [], more: 0, found: found.length }; g.busy = false; g.status = ""; renderMain(); return; }
+    g.status = "Reading " + take.length + (take.length === 1 ? " email…" : " emails…"); renderMain();
+    var mails = await readEmails(take.map(function (m) { return m.id; }));
+    var merged = null;
+    for (var i = 0; i < mails.length; i += BATCH) {
+      var part = mails.slice(i, i + BATCH);
+      g.status = "Claude is reading emails " + (i + 1) + "–" + (i + part.length) + " of " + mails.length + "…"; renderMain();
+      var text = gmailPreamble(S, todayIso()) + part.map(function (m) { return emailForClaude(m); }).join("\n\n---\n\n");
+      var res = bookingsOnly(normRes(await claudeJson(buildPrompt(text, null, false, null, S.home), BRAIN_SCHEMA, "medium"), null));
+      merged = merged ? mergeRes(merged, res) : res;
+    }
+    var before = JSON.stringify(S), beforeSeen = JSON.stringify(seen), stats = {};
+    if ([].concat(merged.trans, merged.stays, merged.itin, merged.food).length) applyResult(S, merged, false, stats);
+    take.forEach(function (m) { seen[m.id] = Date.now(); });
+    setSeenIds(seen); save();
+    g.undo = { journal: before, seen: beforeSeen };
+    g.result = { emails: take.length, added: stats.added || [], updated: stats.updated || [], more: fresh.length - take.length, found: found.length };
+    renderTree();
+  } catch (e) { g.err = (e && e.message) || "Could not sync from Gmail."; }
   g.busy = false; g.status = ""; renderMain();
 }
-
-async function gmailSend() {
-  var g = ui.gmail, ids = Object.keys(g.picked).filter(function (k) { return g.picked[k]; }).slice(0, 15);
-  if (!ids.length || g.busy) return;
-  g.busy = true; g.err = ""; g.status = "Reading " + ids.length + (ids.length === 1 ? " email…" : " emails…"); renderMain();
-  try {
-    var mails = await readEmails(ids);
-    brain.text = mails.map(function (m) { return emailForClaude(m); }).join("\n\n---\n\n");
-    g.busy = false; g.status = ""; g.list = null;
-    await runBrain();
-    return;
-  } catch (e) { g.err = (e && e.message) || "Could not read those emails."; }
-  g.busy = false; g.status = ""; renderMain();
+function gmailUndo() {
+  var g = ui.gmail; if (!g.undo) return;
+  replaceState(JSON.parse(g.undo.journal)); setSeenIds(JSON.parse(g.undo.seen)); save();
+  g.undo = null; g.result = null; renderTree(); renderMain(); toast("Sync undone.");
 }
 
 function importCSV(text) {
@@ -218,9 +232,9 @@ document.addEventListener("click", function (e) {
   else if (a === "clearDates" && f) { f.c.start = ""; f.c.end = ""; save(); renderMain(); }
   else if (a === "saveGmail") { var gv = $("gclient").value.trim(); if (!/\.apps\.googleusercontent\.com$/.test(gv)) { toast("That does not look like a Google client ID. It ends in .apps.googleusercontent.com"); return; } setClientId(gv); renderMain(); toast("Gmail is set up. Import from the Claude tab."); }
   else if (a === "clearGmail") { setClientId(""); ui.gmail.list = null; renderMain(); toast("Gmail client ID removed."); }
-  else if (a === "gmailFind") { gmailFind(); }
-  else if (a === "gmailPick") { ui.gmail.picked[id] = b.checked; renderMain(); }
-  else if (a === "gmailSend") { gmailSend(); }
+  else if (a === "gmailSync") { gmailSync(); }
+  else if (a === "gmailUndo") { gmailUndo(); }
+  else if (a === "gmailForget") { setSeenIds({}); toast("Fernweh will read all booking emails again on the next sync."); }
   else if (a === "suggestPack") { suggestPack(); }
   else if (a === "importPick") { if (!f || !f.city) { toast("Choose a destination first, then import."); return; } $("csv").click(); }
   else if (a === "pcat") { sel.pcat = id; renderMain(); }

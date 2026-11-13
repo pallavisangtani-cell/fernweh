@@ -18,7 +18,8 @@ var toastT;
 export function toast(m) {
   if (!m) return;
   var t = $("toast"); t.textContent = m; t.style.display = "block";
-  clearTimeout(toastT); toastT = setTimeout(function () { t.style.display = "none"; }, 3800);
+  // Longer messages (errors) stay up long enough to read or screenshot.
+  clearTimeout(toastT); toastT = setTimeout(function () { t.style.display = "none"; }, Math.min(15000, 3800 + m.length * 60));
 }
 
 /* ---------- Small formatters ---------- */
@@ -461,7 +462,7 @@ function settingsHtml() {
     + '<li>Copy the <b>Client ID</b> (it ends in .apps.googleusercontent.com) into <b>Gmail client ID</b> below.</li></ol>'
     + '<p class="meta">When you first connect Gmail, Google warns that the app is unverified. That is expected for an app only you use: choose Continue.</p></details>'
     + '<div class="row"><label class="fld g">Google Maps key<input id="mapskey" type="password" autocomplete="off" spellcheck="false" placeholder="' + (mk ? 'Saved. Paste a new key to replace it' : 'AIza…') + '"></label><button class="btn pri" data-act="saveMaps">Save</button>' + (mk ? '<button class="btn ghost" style="color:var(--bad)" data-act="clearMaps">Remove</button>' : '') + '</div>'
-    + '<div class="row"><label class="fld g">Gmail client ID<input id="gclient" value="' + esc(gid) + '" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label><button class="btn pri" data-act="saveGmail">Save</button>' + (gid ? '<button class="btn ghost" style="color:var(--bad)" data-act="clearGmail">Remove</button>' : '') + '</div></div>';
+    + '<div class="row"><label class="fld g">Gmail client ID<input id="gclient" value="' + esc(gid) + '" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label><button class="btn pri" data-act="saveGmail">Save</button>' + (gid ? '<button class="btn ghost" style="color:var(--bad)" data-act="clearGmail">Remove</button>' : '') + '</div>' + (gid ? '<p class="meta">Gmail sync skips emails it has read before. <button class="link2" data-act="gmailForget">Read all again next time</button></p>' : '') + '</div>';
   h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("plus") + '</span><div><h3 style="font:500 1.15rem var(--display)">Add trips from a file</h3><div class="meta">Adds to your journal. Nothing is replaced.</div></div></div><p class="lede" style="margin-top:12px">Use this for a Fernweh file of past trips. Trips and destinations with the same name are combined, and adding the same file twice does not duplicate anything.</p><div class="row"><button class="btn pri" data-act="mergePick">' + icon("upload") + 'Choose file</button><input type="file" id="mergeFile" accept=".json,application/json" hidden></div></div>';
   h += '<div class="panel"><div style="display:flex;gap:12px;align-items:center"><span class="ticon acc">' + icon("upload") + '</span><div><h3 style="font:500 1.15rem var(--display)">Backup and restore</h3><div class="meta">Your journal is saved on this device</div></div></div><p class="lede" style="margin-top:12px">Download a copy now and then. To move your trips to another device, copy this text and paste it into Restore there.</p><textarea id="bk" aria-label="Backup data" style="margin-top:12px;min-height:140px">' + esc(JSON.stringify(S)) + '</textarea><div class="row"><button class="btn pri" data-act="dlBackup">Download backup</button><button class="btn" data-act="restore">Restore from text</button></div></div>';
   return h;
@@ -486,15 +487,22 @@ function shareView(co) {
 
 /* ---------- Gmail import ---------- */
 function gmailHtml() {
-  var g = ui.gmail, h = '<div class="panel gmail"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("mail") + '</span><div style="flex:1"><h3 style="font:500 1.15rem var(--display)">Import from Gmail</h3><div class="meta">Find booking confirmations and let Claude add them</div></div></div>';
+  var g = ui.gmail, h = '<div class="panel gmail"><div style="display:flex;gap:12px;align-items:center"><span class="ticon">' + icon("mail") + '</span><div style="flex:1"><h3 style="font:500 1.15rem var(--display)">Sync from Gmail</h3><div class="meta">Reads emails titled "your reservation", "your itinerary", "your booking" and similar, and files the bookings into your trips</div></div></div>';
   if (!getClientId()) return h + '<p class="meta" style="margin-top:10px">Set up Gmail once in Settings first.</p><div class="row"><button class="btn sm" data-act="settings">Open Settings</button></div></div>';
-  h += '<div class="row"><label class="fld">Look back<select id="gmonths">' + [["1", "1 month"], ["3", "3 months"], ["6", "6 months"], ["12", "1 year"], ["36", "3 years"]].map(function (o) { return '<option value="' + o[0] + '"' + (g.months === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join("") + '</select></label><button class="btn pri" data-act="gmailFind"' + (g.busy ? ' disabled' : '') + '>' + icon("mail") + (g.busy ? esc(g.status || 'Working…') : 'Find booking emails') + '</button></div>';
+  if (!getApiKey()) return h + '<p class="meta" style="margin-top:10px">Connect Claude in Settings first. Claude reads the emails.</p><div class="row"><button class="btn sm" data-act="settings">Open Settings</button></div></div>';
+  h += '<div class="row"><label class="fld">Look back<select id="gmonths">' + [["1", "1 month"], ["3", "3 months"], ["6", "6 months"], ["12", "1 year"], ["36", "3 years"]].map(function (o) { return '<option value="' + o[0] + '"' + (g.months === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join("") + '</select></label><button class="btn acc" data-act="gmailSync"' + (g.busy ? ' disabled' : '') + '>' + icon("mail") + (g.busy ? esc(g.status || 'Working…') : 'Sync from Gmail') + '</button></div>';
   if (g.err) h += '<p class="err">' + esc(g.err) + '</p>';
-  if (g.list) {
-    if (!g.list.length) return h + '<p class="empty">No booking emails found in that period.</p></div>';
-    var n = Object.keys(g.picked).filter(function (k) { return g.picked[k]; }).length;
-    h += '<div class="mails">' + g.list.map(function (m) { return '<label class="mail"><input type="checkbox" data-act="gmailPick" data-id="' + esc(m.id) + '"' + (g.picked[m.id] ? ' checked' : '') + '><span><b>' + esc(m.subject) + '</b><small>' + esc(m.from) + ' · ' + esc(String(m.date).replace(/ [+-]\d{4}.*$/, "")) + '</small><small class="snip">' + esc(m.snippet) + '</small></span></label>'; }).join("") + '</div>';
-    h += '<div class="row"><button class="btn acc" data-act="gmailSend"' + (!n || g.busy || brain.busy ? ' disabled' : '') + '>' + icon("sparkle") + 'Send ' + n + (n === 1 ? ' email' : ' emails') + ' to Claude</button><span class="meta">Up to 15 at a time. You check everything before it is added.</span></div>';
+  var r = g.result;
+  if (r) {
+    if (!r.emails) h += '<p class="meta" style="margin-top:6px">' + (r.found ? 'No new booking emails. All ' + r.found + ' found were synced before.' : 'No booking emails found in that period.') + '</p>';
+    else {
+      h += '<div class="syncres"><b>Read ' + r.emails + (r.emails === 1 ? ' email' : ' emails') + ': ' + r.added.length + ' added, ' + r.updated.length + ' updated.</b>';
+      var label = { trans: "Transport", stays: "Stay", itin: "Activity", food: "Table" };
+      var line = function (x, how) { return '<li><span class="pill ' + (how === "added" ? "ok" : "brand") + '">' + how + '</span> ' + esc(label[x.list] || x.list) + ': <b>' + esc(x.title) + '</b> <span class="meta">' + esc(x.trip + " › " + x.city) + '</span></li>'; };
+      if (r.added.length || r.updated.length) h += '<ul>' + r.added.map(function (x) { return line(x, "added"); }).join("") + r.updated.map(function (x) { return line(x, "updated"); }).join("") + '</ul>';
+      else h += '<p class="meta">These emails had no new booking details.</p>';
+      h += '<div class="acts">' + (g.undo ? '<button class="btn sm" data-act="gmailUndo">Undo this sync</button>' : '') + (r.more ? '<button class="btn sm pri" data-act="gmailSync">Sync ' + r.more + ' more</button>' : '') + '</div></div>';
+    }
   }
   return h + '</div>';
 }

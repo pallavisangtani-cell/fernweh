@@ -1,5 +1,5 @@
 // Offline support. Bump VERSION whenever any file in SHELL changes, so installed copies update.
-const VERSION = "fernweh-v6";
+const VERSION = "fernweh-v7";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png",
   "src/styles.css", "src/main.js", "src/constants.js", "src/util.js", "src/model.js", "src/brain.js",

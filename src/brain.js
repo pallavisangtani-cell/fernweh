@@ -2,7 +2,7 @@
 // merging chunked results and filing them into the journal.
 import { KS, PCATS, FOOD_TYPES, MICHELIN } from "./constants.js";
 import { arr, uid } from "./util.js";
-import { newCity, newTrip } from "./model.js";
+import { newCity, newTrip, tripRange } from "./model.js";
 
 /** Copy only `keys` from o as trimmed strings; normalise status/booked when present. */
 export function norm(o, keys) {
@@ -124,8 +124,44 @@ export function yearOfItem(it) {
  * File a normalised result into the journal S. Countries and cities are matched by name,
  * case-insensitively, and created when missing. Returns the city to open afterwards.
  */
-export function applyResult(S, r, done) {
+/** What makes two items the same booking or entry, per list. "" means never treat as the same. */
+export function itemKey(k, x) {
+  var low = function (v) { return String(v || "").trim().toLowerCase().replace(/\s+/g, " "); };
+  if (k === "trans") return (x.ref ? "ref:" + low(x.ref) + "|" : "") + (low(x.no) || low(x.route)) + "|" + low(x.date);
+  if (k === "stays") return low(x.name) + "|" + low(x.checkin);
+  if (k === "itin") return low(x.text) + "|" + low(x.day);
+  if (k === "food" || k === "places") return low(x.name);
+  if (k === "budget") return low(x.label) + "|" + low(x.cost);
+  return "";
+}
+function sameItem(k, a, b) {
+  if (k === "trans" && a.ref && b.ref && a.ref.toLowerCase() === b.ref.toLowerCase()) return true;
+  var ka = itemKey(k, a).replace(/^ref:[^|]*\|/, ""), kb = itemKey(k, b).replace(/^ref:[^|]*\|/, "");
+  return !!ka && ka === kb;
+}
+/** Fill an existing item's blanks from a newer copy; a confirmation or booking only ever upgrades it. */
+function mergeInto(old, x) {
+  var changed = false;
+  Object.keys(x).forEach(function (q) {
+    if (q === "city" || q === "country" || q === "id") return;
+    if (q === "status" && (old.status === "tentative" || !old.status) && x.status === "confirmed") { old.status = "confirmed"; changed = true; return; }
+    if (q === "status" && old.status === "want" && x.status === "visited") { old.status = "visited"; changed = true; return; }
+    if (q === "booked" && old.booked !== "yes" && x.booked === "yes") { old.booked = "yes"; changed = true; return; }
+    if (q === "status" || q === "booked") return;
+    if ((old[q] == null || old[q] === "") && x[q] !== "") { old[q] = x[q]; changed = true; }
+  });
+  return changed;
+}
+
+/**
+ * File a normalised result into the journal S. Countries and cities are matched by name,
+ * case-insensitively, and created when missing. Items that already exist are updated instead of added twice.
+ * Returns the city to open afterwards; `stats` (optional) collects {added: [...], updated: [...]} as
+ * {list, title, trip, city}.
+ */
+export function applyResult(S, r, done, stats) {
   var first = null, years = {};
+  stats = stats || {}; stats.added = stats.added || []; stats.updated = stats.updated || [];
   function dest(cn, cy) {
     var co = S.countries.filter(function (c) { return c.name.toLowerCase() === cn.toLowerCase(); })[0];
     if (!co) { co = newTrip(cn, done ? "visited" : "planned", r.currency || "USD"); S.countries.push(co); }
@@ -134,23 +170,52 @@ export function applyResult(S, r, done) {
     if (done) { c2.status = "completed"; co.status = "visited"; }
     return { co: co, ci: c2 };
   }
+  var mainT = null;
   KS.forEach(function (k) {
     r[k].forEach(function (x) {
       var t = dest(x.country, x.city);
-      if (!first) first = t.ci;
+      if (!first) { first = t.ci; mainT = t.co; }
       var y = yearOfItem(x);
       if (y && (!years[t.co.id] || y < years[t.co.id])) years[t.co.id] = y;
+      var note = { list: k, title: x.name || x.text || x.label || [x.no, x.route].filter(Boolean).join(" "), trip: t.co.name, city: t.ci.name };
+      var old = t.ci[k].filter(function (e) { return sameItem(k, e, x); })[0];
+      if (old) { if (mergeInto(old, x)) stats.updated.push(note); return; }
       var o = {};
       Object.keys(x).forEach(function (q) { if (q !== "city" && q !== "country") o[q] = x[q]; });
       o.id = uid();
       t.ci[k].push(o);
+      stats.added.push(note);
     });
   });
-  var main = (r.packing.length || r.notes || !first) ? dest(r.country, r.city).ci : first;
-  r.packing.forEach(function (x) { main.packing.push(Object.assign({ id: uid() }, x)); });
+  var mainD = (r.packing.length || r.notes || !first) ? dest(r.country, r.city) : { co: mainT, ci: first };
+  var main = mainD.ci, trip = mainD.co;
+  // Packing belongs to the trip.
+  var have = {}; trip.packing.forEach(function (p) { have[String(p.text).toLowerCase()] = 1; });
+  r.packing.forEach(function (x) { if (have[String(x.text).toLowerCase()]) return; trip.packing.push(Object.assign({ id: uid() }, x)); });
   if (r.notes) main.notes = (main.notes ? main.notes + "\n\n" : "") + r.notes;
   S.countries.forEach(function (co) { if (years[co.id] && !co.year) co.year = years[co.id]; });
   return main;
+}
+
+/** Instructions put in front of a batch of emails, with the user's existing trips so bookings join the right one. */
+export function gmailPreamble(S, today) {
+  var trips = S.countries.map(function (co) {
+    var r = tripRange(co);
+    return "- " + co.name + (r ? " (" + r.start + " to " + r.end + ")" : "") + ": " + (co.cities.map(function (c) { return c.name; }).join(", ") || "no destinations yet");
+  });
+  return "The text below is booking emails from the traveller's inbox. Today is " + today + ". Extract only real bookings and reservations: flights, trains and other transport, hotels and other stays, tickets for activities, and booked restaurant tables. "
+    + "A booking email means it is booked: set booked \"yes\" and status \"confirmed\" unless the email says it is on hold, pending or not yet paid. Ignore offers, marketing and anything that is not a booking. "
+    + "For country (the trip), use an existing trip below when the booking's place and dates fit it, written exactly as shown. Otherwise use the country visited and the year, for example \"Japan 2027\".\n"
+    + "Existing trips:\n" + (trips.length ? trips.join("\n") : "(none yet)") + "\n\n";
+}
+
+/** Keep only actual bookings (for Gmail sync): transport, stays, ticketed activities and booked tables. Drops items with no destination. */
+export function bookingsOnly(r) {
+  var ok = function (x) { return x.city && x.country; };
+  r.trans = r.trans.filter(ok); r.stays = r.stays.filter(ok); r.itin = r.itin.filter(ok);
+  r.food = r.food.filter(function (x) { return ok(x) && x.bookDate; });
+  r.places = []; r.budget = []; r.packing = []; r.notes = "";
+  return r;
 }
 
 /* ---------- Structured output schemas for Claude ---------- */

@@ -9,12 +9,27 @@ const ID_STORE = "fernweh-gmail-client";
 export function getClientId() { try { return localStorage.getItem(ID_STORE) || ""; } catch (e) { return ""; } }
 export function setClientId(v) { try { if (v) localStorage.setItem(ID_STORE, v); else localStorage.removeItem(ID_STORE); } catch (e) {} }
 
-/** Gmail search for confirmations. `months` limits how far back to look. */
+// Only emails whose subject reads like a booking: "your reservation", "your itinerary", "your booking" and close variants.
+const PHRASES = ["your reservation", "your itinerary", "your booking", "your trip itinerary", "your e-ticket", "your eticket", "your ticket", "your tickets",
+  "your flight", "your stay", "booking confirmation", "booking confirmed", "reservation confirmation", "reservation confirmed", "booking reference", "e-ticket", "travel itinerary"];
+const NOT_BOOKING = /\b(cancel(l)?ed|cancellation|how was|rate your|review|survey|feedback|offer|deal|sale|% off|newsletter|points|miles statement|reminder to book|complete your booking|still thinking|price drop|abandon)/i;
+
+/** Gmail search for booking emails. `months` limits how far back to look. */
 export function bookingQuery(months) {
-  return "newer_than:" + (months || 6) + "m -category:promotions -category:social "
-    + "(subject:(booking OR booked OR confirmation OR confirmed OR reservation OR itinerary OR e-ticket OR eticket OR \"boarding pass\" OR receipt) "
-    + "OR from:(booking.com OR airbnb OR expedia OR agoda OR hotels.com OR trip.com OR emirates OR flydubai OR etihad OR qatarairways OR lufthansa OR britishairways OR klm OR airfrance OR opentable OR resy OR sevenrooms OR thefork OR getyourguide OR viator OR trainline OR bahn OR eurostar OR uber))";
+  return "newer_than:" + (months || 6) + "m -category:promotions -category:social subject:(" + PHRASES.map(function (p) { return '"' + p + '"'; }).join(" OR ") + ")";
 }
+
+/** Second check on the phone, because Gmail's search is looser than it looks. */
+export function isBookingSubject(subject) {
+  var s = String(subject || "").toLowerCase();
+  if (!s || NOT_BOOKING.test(s)) return false;
+  return PHRASES.some(function (p) { return s.indexOf(p) >= 0; });
+}
+
+/* Emails already synced, so a sync only reads new ones. */
+const SEEN_STORE = "fernweh-gmail-seen";
+export function seenIds() { try { return JSON.parse(localStorage.getItem(SEEN_STORE) || "{}"); } catch (e) { return {}; } }
+export function setSeenIds(o) { try { localStorage.setItem(SEEN_STORE, JSON.stringify(o)); } catch (e) {} }
 
 /** Base64url (as Gmail sends it) to a UTF-8 string. */
 export function decodeB64url(s) {
@@ -100,7 +115,7 @@ async function api(path) {
   return r.json();
 }
 
-/** Find likely booking emails. Returns [{id, subject, from, date, snippet}] newest first. */
+/** Find booking emails (subject checked twice). Returns [{id, subject, from, date, snippet}] newest first. */
 export async function findBookings(months, max) {
   await signIn();
   var list = await api("/messages?maxResults=" + (max || 40) + "&q=" + encodeURIComponent(bookingQuery(months)));
@@ -108,6 +123,7 @@ export async function findBookings(months, max) {
   var out = [];
   for (var i = 0; i < ids.length; i++) {
     var m = await api("/messages/" + ids[i] + "?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date");
+    if (!isBookingSubject(header(m.payload, "Subject"))) continue;
     out.push({ id: m.id, subject: header(m.payload, "Subject") || "(no subject)", from: header(m.payload, "From").replace(/<[^>]+>/, "").replace(/"/g, "").trim(), date: header(m.payload, "Date"), snippet: m.snippet || "" });
   }
   return out;

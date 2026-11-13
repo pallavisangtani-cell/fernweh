@@ -325,3 +325,7 @@ button.pill{cursor:pointer}
 .pass .ptop .itemacts .x{color:inherit}
 .card.editing{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-soft),var(--shadow);grid-column:1/-1}
 .act .card.editing,.day .card.editing{margin:10px 14px;box-shadow:0 0 0 2px var(--brand-soft)}
+.syncres{margin-top:12px;background:var(--sunk);border-radius:14px;padding:12px 14px}
+.syncres ul{list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.syncres li{font-size:.88rem}
+.link2{border:0;background:none;color:var(--brand);font:inherit;font-weight:600;padding:0;cursor:pointer;text-decoration:underline}

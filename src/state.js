@@ -6,7 +6,7 @@ export const S = { countries: [] };
 export const sel = { trip: null, city: null, confirmCity: null, tab: "over", view: "home", form: false, confirmDel: null, pcat: "All", pf: "all", fstat: "all", ftype: "All", faward: "", fcuisine: "All", mapKinds: { stays: true, food: true, places: true }, shareText: "", edit: null, rename: null };
 export const brain = { text: "", busy: false, err: "", res: null, done: false, status: "" };
 export const shareOpt = { itin: true, costs: false, cat: "All" };
-export const ui = { packBusy: false, keyBusy: false, weather: {}, geo: { busy: false, status: "", err: "" }, gmail: { busy: false, list: null, picked: {}, err: "", months: "6", status: "" } };
+export const ui = { packBusy: false, keyBusy: false, weather: {}, geo: { busy: false, status: "", err: "" }, gmail: { busy: false, err: "", months: "6", status: "", result: null, undo: null } };
 
 /** Replace the journal contents in place (used by load and restore). */
 export function replaceState(d) {

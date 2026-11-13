@@ -23,9 +23,32 @@ test("header lookup ignores case", () => {
 });
 test("bookingQuery limits the period and looks for confirmations", () => {
   const q = bookingQuery(3);
-  assert.match(q, /^newer_than:3m /); assert.match(q, /subject:\(booking OR/); assert.match(q, /from:\(booking\.com OR airbnb/);
+  assert.match(q, /^newer_than:3m /); assert.match(q, /-category:promotions/);
 });
 test("emailForClaude labels and trims", () => {
   const t = emailForClaude({ subject: "S", from: "F", date: "D", text: "x".repeat(50) }, 10);
   assert.equal(t, "## Email: S\nFrom: F\nDate: D\n\nxxxxxxxxxx\n[…]");
+});
+
+import { isBookingSubject } from "../src/gmail.js";
+import { gmailPreamble } from "../src/brain.js";
+import { fix, newCity } from "../src/model.js";
+test("only booking subjects pass", () => {
+  for (const s of ["Your reservation at Den is confirmed", "Your itinerary: DXB – NRT", "Your booking at Hotel Aloft", "Booking confirmation 88213", "Emirates e-ticket receipt", "Reservation confirmed for 2 people"])
+    assert.equal(isBookingSubject(s), true, s);
+  for (const s of ["How was your stay at Hotel Aloft?", "Your booking has been cancelled", "Flash sale: 30% off flights", "Complete your booking now", "Weekly newsletter", "Your receipt from Uber", ""])
+    assert.equal(isBookingSubject(s), false, s);
+});
+test("the search asks Gmail for those phrases only", () => {
+  const q = bookingQuery(6);
+  assert.match(q, /subject:\("your reservation" OR "your itinerary" OR "your booking"/);
+  assert.doesNotMatch(q, /from:/);
+});
+test("gmailPreamble lists existing trips so bookings join them", () => {
+  const a = newCity("Düsseldorf"); a.trans.push({ date: "2026-12-01" });
+  const S = fix({ countries: [{ name: "Germany 2026", cities: [a] }] });
+  const p = gmailPreamble(S, "2026-11-13");
+  assert.match(p, /- Germany 2026 \(2026-12-01 to 2026-12-01\): Düsseldorf/);
+  assert.match(p, /Today is 2026-11-13/);
+  assert.match(gmailPreamble(fix({ countries: [] }), "x"), /\(none yet\)/);
 });

@@ -23,22 +23,49 @@ async function client() {
  * Ask Claude for JSON that matches `schema` (structured outputs). Returns the parsed object.
  * effort: "low" | "medium" | "high". Server-side fallbacks retry on another model if this one declines.
  */
+/*
+ * Each request uses two optional extras: server-side fallbacks (a beta) and structured outputs (strict JSON).
+ * If Claude rejects one with a 400 for this account, step down and remember the level that worked:
+ *   0: beta endpoint + fallbacks + JSON schema   1: JSON schema only   2: plain request, JSON asked for in the prompt
+ */
+var level = 0;
+export function _setSdkForTests(fake) { sdk = fake; level = 0; }
+
+function requestFor(lvl, prompt, schema, effort) {
+  var base = { model: MODEL, max_tokens: 16000, messages: [{ role: "user", content: prompt }], output_config: { effort: effort || "medium" } };
+  if (lvl <= 1) base.output_config.format = { type: "json_schema", schema: schema };
+  else base.messages[0].content = prompt + "\n\nReply with only the JSON object described above, with no other text.";
+  if (lvl === 0) { base.betas = ["server-side-fallback-2026-07-01"]; base.fallbacks = "default"; }
+  return base;
+}
+
+/** Pull the JSON out of a reply, even if it is wrapped in a code fence or a sentence. */
+export function parseJsonReply(text) {
+  try { return JSON.parse(text); } catch (e) {}
+  var a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch (e) {} }
+  throw new Error("Claude's answer could not be read. Try again.");
+}
+
+/** Ask Claude for JSON matching `schema`. effort: "low" | "medium" | "high". */
 export async function claudeJson(prompt, schema, effort) {
-  var x = await client(), msg;
-  try {
-    msg = await x.c.beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: effort || "medium", format: { type: "json_schema", schema: schema } },
-      messages: [{ role: "user", content: prompt }]
-    });
-  } catch (e) { throw friendly(x.Anthropic, e); }
+  var x = await client(), msg, lastErr;
+  for (var lvl = level; lvl <= 2; lvl++) {
+    try {
+      var req = requestFor(lvl, prompt, schema, effort);
+      msg = lvl === 0 ? await x.c.beta.messages.create(req) : await x.c.messages.create(req);
+      level = lvl;
+      break;
+    } catch (e) {
+      lastErr = e;
+      // Only a rejected request (400) is worth retrying with fewer extras; a credit problem is not.
+      if (!(e instanceof x.Anthropic.BadRequestError) || /credit balance/i.test(apiMessage(e))) throw friendly(x.Anthropic, e);
+    }
+  }
+  if (!msg) throw friendly(x.Anthropic, lastErr);
   if (msg.stop_reason === "refusal") throw new Error("Claude declined to process this text. Try removing anything unrelated to your trip.");
-  if (msg.stop_reason === "max_tokens") throw new Error("That was too much to sort in one go. Try pasting a smaller part.");
-  var text = msg.content.filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("");
-  try { return JSON.parse(text); } catch (e) { throw new Error("Claude's answer could not be read. Try again."); }
+  if (msg.stop_reason === "max_tokens") throw new Error("That was too much to sort in one go. Try a smaller part.");
+  return parseJsonReply(msg.content.filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join(""));
 }
 
 /** A tiny request to check the saved key works. */
@@ -48,13 +75,21 @@ export async function testKey() {
   catch (e) { throw friendly(x.Anthropic, e); }
 }
 
+/** The API's own explanation of an error, if it sent one. */
+export function apiMessage(e) {
+  var m = e && e.error && e.error.error && e.error.error.message;
+  return String(m || (e && e.message) || "").replace(/^\d{3}\s+/, "");
+}
+
 function friendly(A, e) {
-  if (e instanceof A.AuthenticationError) return new Error("Claude did not accept that API key. Check it in Settings.");
-  if (e instanceof A.PermissionDeniedError) return new Error("That API key is not allowed to use this model.");
+  var why = apiMessage(e);
+  if (e instanceof A.AuthenticationError) return new Error("Claude did not accept that API key. Check it in Settings. (" + why + ")");
+  if (e instanceof A.PermissionDeniedError) return new Error("This API key is not allowed to do this: " + why);
+  if (e instanceof A.NotFoundError) return new Error("Claude could not find the model " + MODEL + " for this key: " + why);
   if (e instanceof A.RateLimitError) return new Error("Too many requests. Wait a moment and try again.");
-  if (e instanceof A.APIConnectionError) return new Error("Could not reach Claude. Check your connection.");
-  if (e instanceof A.BadRequestError && /credit balance/i.test(e.message || "")) return new Error("Your Anthropic account is out of credits. Add credits in the Claude Console under Billing.");
-  if (e instanceof A.APIError) return new Error("Claude returned an error" + (e.status ? " (" + e.status + ")" : "") + ". Try again.");
+  if (e instanceof A.APIConnectionError) return new Error("Could not reach Claude. Check your connection. (" + why + ")");
+  if (/credit balance/i.test(why)) return new Error("Your Anthropic account is out of credits. Add credits in the Claude Console under Billing.");
+  if (e instanceof A.APIError) return new Error("Claude returned an error" + (e.status ? " (" + e.status + ")" : "") + ": " + (why || "no details") + ". Send this message to whoever helps you with the app.");
   return e;
 }
 

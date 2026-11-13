@@ -165,7 +165,7 @@ describe("applyResult", () => {
     assert.equal(fra.stays[0].name, "Aloft");
     assert.equal(dus.cur, "EUR");
     assert.equal(main, dus);
-    assert.deepEqual(dus.packing.map((p) => p.text), ["Scarf"]);
+    assert.deepEqual(S.countries[0].packing.map((p) => p.text), ["Scarf"]);
     assert.equal(dus.notes, "Christmas markets.");
     assert.equal(S.countries[0].status, "planned");
     assert.ok(!("city" in dus.trans[0]) && !("country" in dus.trans[0]));
@@ -231,5 +231,53 @@ describe("home and packing prompts", () => {
     assert.match(p, /- Frankfurt: weather unknown, use the usual climate for the dates\./);
     assert.match(p, /Already packed or on the list: Scarf\./);
     assert.deepEqual(PACK_SCHEMA.properties.items.items.required, ["text", "cat", "why"]);
+  });
+});
+
+import { itemKey, bookingsOnly } from "../src/brain.js";
+describe("syncing the same booking twice", () => {
+  const flight = (extra) => normRes({ city: "Düsseldorf", country: "Germany 2026", trans: [Object.assign({ no: "EK055", route: "DXB to DUS", date: "2026-12-01", via: "Emirates", status: "tentative", booked: "no" }, extra)] });
+  test("a repeat updates instead of adding, and only upgrades status", () => {
+    const S = fix({ countries: [] }), st = {};
+    applyResult(S, flight({}), false, st);
+    assert.equal(st.added.length, 1);
+    const st2 = {};
+    applyResult(S, flight({ ref: "HG8P22", status: "confirmed", booked: "yes", cost: "1800" }), false, st2);
+    const t = S.countries[0].cities[0].trans;
+    assert.equal(t.length, 1); assert.equal(st2.added.length, 0); assert.equal(st2.updated.length, 1);
+    assert.deepEqual([t[0].ref, t[0].status, t[0].booked, t[0].cost], ["HG8P22", "confirmed", "yes", "1800"]);
+    const st3 = {};
+    applyResult(S, flight({ status: "tentative", booked: "no", via: "Other airline" }), false, st3);
+    assert.deepEqual([t[0].status, t[0].booked, t[0].via], ["confirmed", "yes", "Emirates"]);
+    assert.equal(st3.updated.length, 0, "nothing new, nothing reported");
+  });
+  test("the same booking reference matches even if the route is written differently", () => {
+    const S = fix({ countries: [] });
+    applyResult(S, flight({ ref: "HG8P22" }), false);
+    applyResult(S, normRes({ city: "Düsseldorf", country: "Germany 2026", trans: [{ ref: "hg8p22", route: "Dubai - Düsseldorf", date: "2026-12-01" }] }), false);
+    assert.equal(S.countries[0].cities[0].trans.length, 1);
+  });
+  test("stays match on name and check-in; restaurants on name", () => {
+    const S = fix({ countries: [] });
+    const r = () => normRes({ city: "Tokyo", country: "Japan", stays: [{ name: "Blossom Shinjuku", checkin: "2024-04-08" }], food: [{ name: "Den", bookDate: "2024-04-09" }] });
+    applyResult(S, r(), false); applyResult(S, r(), false);
+    const c = S.countries[0].cities[0];
+    assert.equal(c.stays.length, 1); assert.equal(c.food.length, 1);
+    assert.equal(itemKey("stays", { name: " Blossom  Shinjuku ", checkin: "2024-04-08" }), "blossom shinjuku|2024-04-08");
+  });
+  test("packing from Claude goes to the trip's list, without duplicates", () => {
+    const S = fix({ countries: [] });
+    applyResult(S, normRes({ city: "Tokyo", country: "Japan", packing: [{ text: "Umbrella" }] }), false);
+    applyResult(S, normRes({ city: "Tokyo", country: "Japan", packing: [{ text: "umbrella" }, { text: "Scarf" }] }), false);
+    assert.deepEqual(S.countries[0].packing.map((p) => p.text), ["Umbrella", "Scarf"]);
+    assert.equal(S.countries[0].cities[0].packing.length, 0);
+  });
+  test("bookingsOnly keeps bookings and drops the rest", () => {
+    const r = bookingsOnly(normRes({ city: "Tokyo", country: "Japan", notes: "tips", packing: [{ text: "x" }],
+      trans: [{ route: "SIN to KIX" }, { route: "lost", city: "" }], places: [{ name: "Shrine" }], budget: [{ label: "taxi" }],
+      food: [{ name: "Sezanne", bookDate: "2024-04-10" }, { name: "Den" }] }));
+    assert.equal(r.trans.length, 2, "normRes fills the destination from the top level");
+    assert.deepEqual(r.food.map((f) => f.name), ["Sezanne"]);
+    assert.deepEqual([r.places.length, r.budget.length, r.packing.length, r.notes], [0, 0, 0, ""]);
   });
 });
